@@ -161,6 +161,7 @@ export function EmployeePortal({
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
   const [photoFailed, setPhotoFailed] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [completionToast, setCompletionToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -365,33 +366,30 @@ export function EmployeePortal({
 
     setClaimingOrder(true);
     setFeedback(null);
-
-    const now = new Date().toISOString();
-    let claimedRecord: OrderRecord = {
-      ...chosenOrder,
-      staff_id: loggedInStaff.id,
-      current_status: 1,
-      updated_at: now,
-    };
+    setApiError(null);
 
     try {
-      const response = await fetch('/api/claim-order', {
+      const response = await fetch('/api/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_id: chosenOrder.order_id,
+          status: 1,
           staff_id: loggedInStaff.id,
         }),
       });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.order) {
-          claimedRecord = data.order as OrderRecord;
-        }
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to claim order in database.');
       }
-    } catch {
-      // Fallback to local state if offline
-    } finally {
+
+      const claimedRecord: OrderRecord = {
+        ...chosenOrder,
+        staff_id: loggedInStaff.id,
+        current_status: Number(data.current_status ?? 1),
+        updated_at: data.updated_at || new Date().toISOString(),
+      };
+
       setActiveOrder(claimedRecord);
       setPendingOrders((prev) => {
         const remaining = prev.filter(
@@ -401,6 +399,11 @@ export function EmployeePortal({
         return remaining;
       });
       setFeedback(`Order ${claimedRecord.order_id} claimed. Status updates unlocked.`);
+    } catch (err) {
+      setApiError(
+        err instanceof Error ? err.message : 'Unable to claim order from Turso.'
+      );
+    } finally {
       setClaimingOrder(false);
     }
   };
@@ -411,23 +414,28 @@ export function EmployeePortal({
 
     setReleasingOrder(true);
     setFeedback(null);
+    setApiError(null);
 
     try {
-      await fetch('/api/release-order', {
+      const response = await fetch('/api/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_id: orderToRelease.order_id,
+          status: 1,
+          staff_id: 'unassigned',
         }),
       });
-    } catch {
-      // Fallback to local state if offline
-    } finally {
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to release order.');
+      }
+
       const releasedRecord: OrderRecord = {
         ...orderToRelease,
         staff_id: 'unassigned',
         current_status: 1,
-        updated_at: new Date().toISOString(),
+        updated_at: data.updated_at || new Date().toISOString(),
       };
       setActiveOrder(null);
       setPendingOrders((prev) => {
@@ -437,28 +445,25 @@ export function EmployeePortal({
         return updated;
       });
       setFeedback(`Released ${orderToRelease.order_id} back to pending orders.`);
+    } catch (err) {
+      setApiError(
+        err instanceof Error ? err.message : 'Unable to release order in Turso.'
+      );
+    } finally {
       setReleasingOrder(false);
     }
   };
 
   const handleUpdateStatus = async (status: number) => {
-    if (!activeOrder || updatingStatus !== null || completingOrder) return;
+    if (!activeOrder || !loggedInStaff || updatingStatus !== null || completingOrder) {
+      return;
+    }
     setUpdatingStatus(status);
     setFeedback(null);
+    setApiError(null);
 
-    const nextUpdatedAt = new Date().toISOString();
     const statusLabel =
       STATUS_BUTTONS.find((b) => b.status === status)?.label ?? `Step ${status}`;
-
-    setActiveOrder((prev) =>
-      prev
-        ? {
-            ...prev,
-            current_status: status,
-            updated_at: nextUpdatedAt,
-          }
-        : null
-    );
 
     try {
       const response = await fetch('/api/update-status', {
@@ -466,48 +471,67 @@ export function EmployeePortal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_id: activeOrder.order_id,
-          current_status: status,
+          status,
+          staff_id: loggedInStaff.id,
         }),
       });
-      if (response.ok) {
-        const data = await response.json();
-        const savedAt = data.updated_at || nextUpdatedAt;
-        setActiveOrder((prev) =>
-          prev ? { ...prev, updated_at: savedAt } : null
-        );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update status in Turso.');
       }
-    } catch {
-      // Optimistic state retained
-    } finally {
-      const timeFormatted = new Date(nextUpdatedAt).toLocaleTimeString([], {
+
+      const savedAt = data.updated_at || new Date().toISOString();
+      setActiveOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              current_status: Number(data.current_status ?? status),
+              staff_id: loggedInStaff.id,
+              updated_at: savedAt,
+            }
+          : null
+      );
+
+      const timeFormatted = new Date(savedAt).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
       });
       setFeedback(`Status updated to ${status}. ${statusLabel} (${timeFormatted})`);
+    } catch (err) {
+      setApiError(
+        err instanceof Error ? err.message : 'Failed to persist status update.'
+      );
+    } finally {
       setUpdatingStatus(null);
     }
   };
 
   const handleCompleteOrder = async () => {
-    if (!activeOrder || completingOrder || updatingStatus !== null) return;
+    if (!activeOrder || !loggedInStaff || completingOrder || updatingStatus !== null) {
+      return;
+    }
     const completedOrder = activeOrder;
 
     setCompletingOrder(true);
     setFeedback(null);
+    setApiError(null);
 
     try {
-      await fetch('/api/complete-order', {
+      const response = await fetch('/api/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_id: completedOrder.order_id,
+          status: 6,
+          staff_id: loggedInStaff.id,
         }),
       });
-    } catch {
-      // Proceed cleanly with local completion reset if offline
-    } finally {
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to complete order in Turso.');
+      }
+
       setActiveOrder(null);
-      setCompletingOrder(false);
       setCompletionToast(
         `Order ${completedOrder.order_id} completed successfully!`
       );
@@ -518,6 +542,12 @@ export function EmployeePortal({
       toastTimerRef.current = window.setTimeout(() => {
         setCompletionToast(null);
       }, 4500);
+    } catch (err) {
+      setApiError(
+        err instanceof Error ? err.message : 'Unable to complete order in Turso.'
+      );
+    } finally {
+      setCompletingOrder(false);
     }
   };
 
@@ -1066,6 +1096,15 @@ export function EmployeePortal({
                   />
                 </button>
               </div>
+
+              {apiError && (
+                <p
+                  role="alert"
+                  className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+                >
+                  {apiError}
+                </p>
+              )}
 
               {feedback && (
                 <p

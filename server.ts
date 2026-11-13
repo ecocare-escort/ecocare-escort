@@ -575,27 +575,43 @@ async function startServer() {
 
   app.post('/api/update-status', async (req: Request, res: Response) => {
     try {
-      const { order_id, current_status } = req.body || {};
-      const orderId = typeof order_id === 'string' ? order_id.trim() : '';
-      const statusNum = Number(current_status);
+      const body = req.body || {};
+      const orderId =
+        typeof body.order_id === 'string' ? body.order_id.trim().toUpperCase() : '';
+      const rawStatus =
+        body.status !== undefined ? body.status : body.current_status;
+      const statusNum = Number(rawStatus);
+      const staffId =
+        typeof body.staff_id === 'string' && body.staff_id.trim().length > 0
+          ? body.staff_id.trim()
+          : null;
 
       if (!orderId || !Number.isInteger(statusNum) || statusNum < 1 || statusNum > 6) {
         res.status(400).json({
-          error: 'Invalid payload. Provide a valid order_id and current_status (1-6).',
+          error: 'Invalid payload. Provide a valid order_id and status (1-6).',
         });
         return;
       }
 
       const updatedAt = new Date().toISOString();
       const completedAt = statusNum === 6 ? updatedAt : null;
-      const result = await db.execute({
-        sql: `
-          UPDATE orders
-          SET current_status = ?, completed_at = ?, updated_at = ?
-          WHERE order_id = ?
-        `,
-        args: [statusNum, completedAt, updatedAt, orderId],
-      });
+      const result = staffId
+        ? await db.execute({
+            sql: `
+              UPDATE orders
+              SET current_status = ?, staff_id = ?, completed_at = ?, updated_at = ?
+              WHERE UPPER(order_id) = UPPER(?)
+            `,
+            args: [statusNum, staffId, completedAt, updatedAt, orderId],
+          })
+        : await db.execute({
+            sql: `
+              UPDATE orders
+              SET current_status = ?, completed_at = ?, updated_at = ?
+              WHERE UPPER(order_id) = UPPER(?)
+            `,
+            args: [statusNum, completedAt, updatedAt, orderId],
+          });
 
       if (result.rowsAffected === 0) {
         res.status(404).json({ error: `Order ${orderId} not found.` });
@@ -606,7 +622,10 @@ async function startServer() {
         ok: true,
         order_id: orderId,
         current_status: statusNum,
+        status: statusNum,
+        staff_id: staffId,
         updated_at: updatedAt,
+        completed_at: completedAt,
       });
     } catch (error) {
       console.error('Failed to update order status:', error);
@@ -616,13 +635,15 @@ async function startServer() {
 
   app.get('/api/get-tracker', async (req: Request, res: Response) => {
     try {
-      const orderId =
+      const rawOrderId =
         typeof req.query?.order_id === 'string' ? req.query.order_id.trim() : '';
 
-      if (!orderId) {
+      if (!rawOrderId) {
         res.status(400).json({ error: 'Missing required order_id query parameter.' });
         return;
       }
+
+      const normalizedOrderId = rawOrderId.replace(/^#/, '').toUpperCase();
 
       const result = await db.execute({
         sql: `
@@ -630,23 +651,26 @@ async function startServer() {
             o.order_id,
             o.client_name,
             o.hospital_name,
+            COALESCE(NULLIF(o.pickup_time, ''), '09:00 AM') AS pickup_time,
             o.current_status,
             o.updated_at,
-            s.id AS staff_id,
-            s.name AS staff_name,
-            s.phone AS staff_phone,
-            s.photo_url AS staff_photo_url,
-            s.cpr_certificate_id AS staff_cpr_certificate_id
+            o.completed_at,
+            CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE o.staff_id END AS staff_id,
+            CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.name END AS staff_name,
+            CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.role END AS staff_role,
+            CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.phone END AS staff_phone,
+            CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.photo_url END AS staff_photo_url,
+            CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.cpr_certificate_id END AS staff_cpr_certificate_id
           FROM orders o
-          INNER JOIN staff s ON o.staff_id = s.id
-          WHERE o.order_id = ?
+          LEFT JOIN staff s ON o.staff_id = s.id
+          WHERE UPPER(o.order_id) = UPPER(?)
           LIMIT 1
         `,
-        args: [orderId],
+        args: [normalizedOrderId],
       });
 
       if (result.rows.length === 0) {
-        res.status(404).json({ error: `Order ${orderId} not found.` });
+        res.status(404).json({ error: `Order ${rawOrderId} not found.` });
         return;
       }
 

@@ -1,9 +1,4 @@
-import { createClient } from '@libsql/client';
-
-const db = createClient({
-  url: process.env.TURSO_DATABASE_URL || 'file:ecocare_bookings.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
+import { db, ensureSchemaAndSeed } from './_db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -11,9 +6,12 @@ export default async function handler(req, res) {
   }
 
   try {
+    await ensureSchemaAndSeed();
+
     const result = await db.execute(`
-      SELECT id, name, role, photo_url, cpr_certificate_id
+      SELECT id, name, role, phone, photo_url, cpr_certificate_id
       FROM staff
+      WHERE id != 'unassigned'
       ORDER BY CASE id
         WHEN 'staff-dong-hao' THEN 1
         WHEN 'staff-yenchi' THEN 2

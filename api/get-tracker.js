@@ -1,9 +1,4 @@
-import { createClient } from '@libsql/client';
-
-const db = createClient({
-  url: process.env.TURSO_DATABASE_URL || 'file:ecocare_bookings.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
+import { db, ensureSchemaAndSeed } from './_db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -11,12 +6,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const orderId =
+    await ensureSchemaAndSeed();
+
+    const rawOrderId =
       typeof req.query?.order_id === 'string' ? req.query.order_id.trim() : '';
 
-    if (!orderId) {
+    if (!rawOrderId) {
       return res.status(400).json({ error: 'Missing required order_id query parameter.' });
     }
+
+    const normalizedOrderId = rawOrderId.replace(/^#/, '').toUpperCase();
 
     const result = await db.execute({
       sql: `
@@ -24,23 +23,26 @@ export default async function handler(req, res) {
           o.order_id,
           o.client_name,
           o.hospital_name,
+          COALESCE(NULLIF(o.pickup_time, ''), '09:00 AM') AS pickup_time,
           o.current_status,
           o.updated_at,
-          s.id AS staff_id,
-          s.name AS staff_name,
-          s.phone AS staff_phone,
-          s.photo_url AS staff_photo_url,
-          s.cpr_certificate_id AS staff_cpr_certificate_id
+          o.completed_at,
+          CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE o.staff_id END AS staff_id,
+          CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.name END AS staff_name,
+          CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.role END AS staff_role,
+          CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.phone END AS staff_phone,
+          CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.photo_url END AS staff_photo_url,
+          CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.cpr_certificate_id END AS staff_cpr_certificate_id
         FROM orders o
-        INNER JOIN staff s ON o.staff_id = s.id
-        WHERE o.order_id = ?
+        LEFT JOIN staff s ON o.staff_id = s.id
+        WHERE UPPER(o.order_id) = UPPER(?)
         LIMIT 1
       `,
-      args: [orderId],
+      args: [normalizedOrderId],
     });
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: `Order ${orderId} not found.` });
+      return res.status(404).json({ error: `Order ${rawOrderId} not found.` });
     }
 
     return res.status(200).json({
@@ -48,7 +50,7 @@ export default async function handler(req, res) {
       tracker: result.rows[0],
     });
   } catch (error) {
-    console.error('Error fetching tracker data:', error);
+    console.error('Error fetching tracker data from Turso:', error);
     return res.status(500).json({ error: 'Failed to load tracker data from Turso.' });
   }
 }

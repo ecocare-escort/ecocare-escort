@@ -1,9 +1,4 @@
-import { createClient } from '@libsql/client';
-
-const db = createClient({
-  url: process.env.TURSO_DATABASE_URL || 'file:ecocare_bookings.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
+import { db, ensureSchemaAndSeed } from './_db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -11,13 +6,15 @@ export default async function handler(req, res) {
   }
 
   try {
+    await ensureSchemaAndSeed();
+
     const staffId =
       typeof req.query?.staff_id === 'string' ? req.query.staff_id.trim() : '';
 
     if (staffId) {
       const staffResult = await db.execute({
         sql: `
-          SELECT id, name, role, photo_url, cpr_certificate_id
+          SELECT id, name, role, phone, photo_url, cpr_certificate_id
           FROM staff
           WHERE id = ?
           LIMIT 1
@@ -41,11 +38,13 @@ export default async function handler(req, res) {
             o.updated_at,
             s.name AS staff_name,
             s.role AS staff_role,
+            s.phone AS staff_phone,
             s.photo_url AS staff_photo_url,
             s.cpr_certificate_id AS staff_cpr_certificate_id
           FROM orders o
           INNER JOIN staff s ON o.staff_id = s.id
           WHERE o.staff_id = ?
+            AND (o.completed_at IS NULL OR o.completed_at = '')
           ORDER BY o.updated_at DESC
         `,
         args: [staffId],
@@ -69,9 +68,11 @@ export default async function handler(req, res) {
         o.current_status,
         o.updated_at,
         s.name AS staff_name,
-        s.role AS staff_role
+        s.role AS staff_role,
+        s.phone AS staff_phone
       FROM orders o
       INNER JOIN staff s ON o.staff_id = s.id
+      WHERE o.staff_id != 'unassigned'
       ORDER BY o.updated_at DESC
     `);
 

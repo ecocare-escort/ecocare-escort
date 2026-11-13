@@ -26,13 +26,15 @@ interface TrackerApiRecord {
   order_id: string;
   client_name: string;
   hospital_name: string | null;
+  pickup_time?: string | null;
   current_status: number;
   updated_at: string;
-  staff_id: string;
-  staff_name: string;
+  staff_id: string | null;
+  staff_name: string | null;
+  staff_role?: string | null;
   staff_phone?: string | null;
   staff_photo_url: string | null;
-  staff_cpr_certificate_id: string;
+  staff_cpr_certificate_id: string | null;
 }
 
 interface LiveTrackerPageProps {
@@ -341,7 +343,7 @@ export function LiveTrackerPage({
                   {tracker.staff_photo_url && !photoFailed ? (
                     <img
                       src={tracker.staff_photo_url}
-                      alt={tracker.staff_name}
+                      alt={tracker.staff_name || 'Assigned Care Companion'}
                       referrerPolicy="no-referrer"
                       onError={() => setPhotoFailed(true)}
                       className="h-16 w-16 shrink-0 rounded-full border-2 border-emerald-400/70 object-cover object-top"
@@ -360,30 +362,36 @@ export function LiveTrackerPage({
                       Assigned Care Companion
                     </p>
                     <h1 className="mt-0.5 truncate font-display text-lg font-semibold tracking-tight text-white sm:text-xl">
-                      {tracker.staff_name}
+                      {tracker.staff_name || 'Pending Companion Assignment'}
                     </h1>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-300">
-                      <span className="inline-flex items-center gap-1 text-emerald-300">
-                        <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span>CPR / First-Aid ID</span>
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span className="font-mono font-medium tabular-nums text-white">
-                        {tracker.staff_cpr_certificate_id}
-                      </span>
-                      {tracker.staff_phone && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <a
-                            href={`tel:${tracker.staff_phone.replace(/\s+/g, '')}`}
-                            className="inline-flex items-center gap-1 font-mono tabular-nums text-slate-200 hover:text-emerald-300 hover:underline"
-                          >
-                            <Phone className="h-3 w-3" aria-hidden="true" />
-                            <span>{tracker.staff_phone}</span>
-                          </a>
-                        </>
-                      )}
-                    </div>
+                    {tracker.staff_name ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-300">
+                        <span className="inline-flex items-center gap-1 text-emerald-300">
+                          <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span>CPR / First-Aid ID</span>
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span className="font-mono font-medium tabular-nums text-white">
+                          {tracker.staff_cpr_certificate_id || 'Verified'}
+                        </span>
+                        {tracker.staff_phone && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <a
+                              href={`tel:${tracker.staff_phone.replace(/\s+/g, '')}`}
+                              className="inline-flex items-center gap-1 font-mono tabular-nums text-slate-200 hover:text-emerald-300 hover:underline"
+                            >
+                              <Phone className="h-3 w-3" aria-hidden="true" />
+                              <span>{tracker.staff_phone}</span>
+                            </a>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Paid booking received · Awaiting companion dispatch from Serdang.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -413,10 +421,16 @@ export function LiveTrackerPage({
                       Service Completed
                     </h2>
                     <p className="mt-1.5 text-sm text-slate-600">
-                      {tracker.client_name} has arrived safely home with{' '}
-                      <span className="font-medium text-slate-900">
-                        {tracker.staff_name}
-                      </span>
+                      {tracker.client_name} has arrived safely home
+                      {tracker.staff_name ? (
+                        <>
+                          {' '}
+                          with{' '}
+                          <span className="font-medium text-slate-900">
+                            {tracker.staff_name}
+                          </span>
+                        </>
+                      ) : null}
                       .
                     </p>
                   </div>
