@@ -1,0 +1,8 @@
+{
+  "name": "EcoCare Escorts",
+  "description": "Student-run medical escort startup based in Serdang, Malaysia, serving families across the Klang Valley with CPR \u0026 First-Aid certified companions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
