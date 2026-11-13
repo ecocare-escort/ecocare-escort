@@ -2,8 +2,9 @@ import { ArrowRight, Check, HeartHandshake, ShieldCheck, MessageSquare } from 'l
 import heroEscortImg from '../assets/images/hero_ecocare_escort_1794552794861.jpg';
 import bentoHandoffImg from '../assets/images/bento_clinic_handoff_1794552796556.jpg';
 import companionPortraitImg from '../assets/images/care_companion_portrait_1794552796355.jpg';
-import { HERO_HIGHLIGHTS, TESTIMONIALS } from '../data/ecocareData';
+import { HERO_HIGHLIGHTS } from '../data/ecocareData';
 import { ResilientImage } from './ResilientImage';
+import { CustomerReviews } from './CustomerReviews';
 
 export type AppView = 'home' | 'services' | 'book' | 'tracker' | 'faq' | 'portal';
 
@@ -187,13 +188,13 @@ export function HomeView({ onNavigate }: HomeViewProps) {
               </div>
               <div className="p-6">
                 <p className="text-xs font-medium text-emerald-700">
-                  Trusted by Local Families
+                  Serdang Student Care Team
                 </p>
-                <blockquote className="mt-2 text-sm leading-relaxed text-slate-700">
-                  “{TESTIMONIALS[0].quote}”
-                </blockquote>
+                <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                  Every EcoCare escort is a trained university student companion certified in CPR and First-Aid by St. John Ambulance Malaysia.
+                </p>
                 <p className="mt-3 text-xs font-semibold text-slate-900">
-                  {TESTIMONIALS[0].name} · {TESTIMONIALS[0].context}
+                  Serdang Base · Klang Valley Coverage
                 </p>
               </div>
             </div>
@@ -228,6 +229,8 @@ export function HomeView({ onNavigate }: HomeViewProps) {
           </div>
         </div>
       </section>
+
+      <CustomerReviews />
     </>
   );
 }

@@ -28,6 +28,7 @@ export default async function handler(req, res) {
           o.updated_at,
           s.id AS staff_id,
           s.name AS staff_name,
+          s.phone AS staff_phone,
           s.photo_url AS staff_photo_url,
           s.cpr_certificate_id AS staff_cpr_certificate_id
         FROM orders o

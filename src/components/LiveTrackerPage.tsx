@@ -3,12 +3,15 @@ import {
   ArrowLeft,
   Car,
   Check,
+  CheckCircle2,
   Clock,
   Home,
+  Phone,
   Pill,
   RefreshCw,
   Share2,
   ShieldCheck,
+  Star,
   User,
   UserCheck,
 } from 'lucide-react';
@@ -27,6 +30,7 @@ interface TrackerApiRecord {
   updated_at: string;
   staff_id: string;
   staff_name: string;
+  staff_phone?: string | null;
   staff_photo_url: string | null;
   staff_cpr_certificate_id: string;
 }
@@ -88,6 +92,14 @@ const TRACKER_STAGES: TrackerStage[] = [
       'All medications collected. Escorting the patient back home and settling them safely indoors.',
     Icon: Home,
   },
+  {
+    status: 6,
+    title: 'Order Completed',
+    subtitle: 'Service completed safely',
+    detail:
+      'Patient has arrived safely indoors and the escort session is officially closed.',
+    Icon: CheckCircle2,
+  },
 ];
 
 export function LiveTrackerPage({
@@ -107,10 +119,19 @@ export function LiveTrackerPage({
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [lookupInput, setLookupInput] = useState<string>(resolvedOrderId);
 
-  const fetchTracker = async (targetOrderId: string) => {
-    setLoading(true);
-    setError(null);
-    setPhotoFailed(false);
+  // Client Review Form State (shown when status === 6)
+  const [rating, setRating] = useState<number>(0);
+  const [hoveredStar, setHoveredStar] = useState<number>(0);
+  const [comment, setComment] = useState<string>('');
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSubmitted, setReviewSubmitted] = useState<boolean>(false);
+
+  const fetchTracker = async (targetOrderId: string, silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+      setPhotoFailed(false);
+    }
     try {
       const response = await fetch(
         `/api/get-tracker?order_id=${encodeURIComponent(targetOrderId)}`
@@ -121,21 +142,41 @@ export function LiveTrackerPage({
       }
       setTracker(data.tracker as TrackerApiRecord);
     } catch (err) {
-      setTracker(null);
-      setError(
-        err instanceof Error ? err.message : 'Unable to fetch live tracker data.'
-      );
+      if (!silent) {
+        setTracker(null);
+        setError(
+          err instanceof Error ? err.message : 'Unable to fetch live tracker data.'
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     setLookupInput(resolvedOrderId);
+    setRating(0);
+    setHoveredStar(0);
+    setComment('');
+    setReviewError(null);
+    setReviewSubmitted(false);
     fetchTracker(resolvedOrderId);
   }, [resolvedOrderId]);
 
-  const activeStatus = Math.min(5, Math.max(1, Number(tracker?.current_status ?? 1)));
+  const activeStatus = Math.min(6, Math.max(1, Number(tracker?.current_status ?? 1)));
+  const isCompleted = activeStatus === 6;
+
+  // Poll every 5s while trip is active so status 6 syncs automatically from Employee Portal
+  useEffect(() => {
+    if (!tracker || activeStatus >= 6) return;
+    const timer = window.setInterval(() => {
+      fetchTracker(tracker.order_id, true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [tracker?.order_id, activeStatus]);
+
   const currentStageIndex = activeStatus - 1;
   const currentStage = TRACKER_STAGES[currentStageIndex];
 
@@ -152,12 +193,24 @@ export function LiveTrackerPage({
     }
   };
 
+  const handleReviewSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (rating < 1) {
+      setReviewError('Please select a star rating before submitting.');
+      return;
+    }
+    setReviewError(null);
+    setReviewSubmitted(true);
+  };
+
   const formattedUpdatedTime = tracker?.updated_at
     ? new Date(tracker.updated_at).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
       })
     : '--:--';
+
+  const displayedStars = hoveredStar || rating;
 
   return (
     <section
@@ -275,7 +328,7 @@ export function LiveTrackerPage({
             </div>
           ) : (
             <>
-              {/* Top Companion Profile Card (Real DB Staff Name, Photo / Circular Placeholder & CPR ID) */}
+              {/* Top Companion Profile Card */}
               <div className="border-b border-slate-200 bg-slate-900 px-5 py-6 text-white sm:px-7">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
                   <span className="font-mono tabular-nums text-emerald-300">
@@ -285,7 +338,6 @@ export function LiveTrackerPage({
                 </div>
 
                 <div className="mt-5 flex items-center gap-4">
-                  {/* Circular Staff Photo or Placeholder */}
                   {tracker.staff_photo_url && !photoFailed ? (
                     <img
                       src={tracker.staff_photo_url}
@@ -319,6 +371,18 @@ export function LiveTrackerPage({
                       <span className="font-mono font-medium tabular-nums text-white">
                         {tracker.staff_cpr_certificate_id}
                       </span>
+                      {tracker.staff_phone && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <a
+                            href={`tel:${tracker.staff_phone.replace(/\s+/g, '')}`}
+                            className="inline-flex items-center gap-1 font-mono tabular-nums text-slate-200 hover:text-emerald-300 hover:underline"
+                          >
+                            <Phone className="h-3 w-3" aria-hidden="true" />
+                            <span>{tracker.staff_phone}</span>
+                          </a>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -326,7 +390,10 @@ export function LiveTrackerPage({
                 {/* Active Patient & Stage Summary Banner */}
                 <div className="mt-5 flex flex-col gap-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-xs text-slate-300">
-                    Patient: <span className="font-semibold text-white">{tracker.client_name}</span>
+                    Patient:{' '}
+                    <span className="font-semibold text-white">
+                      {tracker.client_name}
+                    </span>
                   </div>
                   <div className="text-xs font-medium text-emerald-300">
                     Status: {currentStage.title} · Updated {formattedUpdatedTime}
@@ -334,110 +401,248 @@ export function LiveTrackerPage({
                 </div>
               </div>
 
-              {/* 5-Node Vertical Delivery-Style Timeline */}
-              <div className="px-5 py-6 sm:px-7 sm:py-8">
-                <div className="mb-5 flex items-center justify-between gap-3">
-                  <h2 className="font-display text-sm font-semibold text-slate-900">
-                    Live Appointment Progress
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => fetchTracker(tracker.order_id)}
-                    className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums text-emerald-700 hover:underline"
-                  >
-                    <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                    <span>Step {activeStatus} of {TRACKER_STAGES.length}</span>
-                  </button>
-                </div>
+              {/* Conditional Body: Step 6 Service Completed & Review Form vs. 1-6 Timeline */}
+              {isCompleted ? (
+                <div className="px-5 py-7 sm:px-7 sm:py-8">
+                  {/* Service Completed Success State */}
+                  <div className="text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                      <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
+                    </div>
+                    <h2 className="mt-3 font-display text-xl font-bold text-slate-900">
+                      Service Completed
+                    </h2>
+                    <p className="mt-1.5 text-sm text-slate-600">
+                      {tracker.client_name} has arrived safely home with{' '}
+                      <span className="font-medium text-slate-900">
+                        {tracker.staff_name}
+                      </span>
+                      .
+                    </p>
+                  </div>
 
-                <ol className="relative space-y-0" aria-label="Live escort progress timeline">
-                  {TRACKER_STAGES.map((stage, index) => {
-                    const isCompleted = stage.status < activeStatus;
-                    const isCurrent = stage.status === activeStatus;
-                    const isPending = stage.status > activeStatus;
-                    const isLast = index === TRACKER_STAGES.length - 1;
-                    const StageIcon = stage.Icon;
+                  {/* Review Form or Thank You Message */}
+                  {reviewSubmitted ? (
+                    <div
+                      role="status"
+                      className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center"
+                    >
+                      <CheckCircle2
+                        className="mx-auto h-6 w-6 text-emerald-700"
+                        aria-hidden="true"
+                      />
+                      <p className="mt-2 font-display text-base font-semibold text-emerald-900">
+                        Thank you for your feedback!
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-800">
+                        Your {rating}-star rating helps our student care team improve every trip.
+                      </p>
+                    </div>
+                  ) : (
+                    <form
+                      onSubmit={handleReviewSubmit}
+                      className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-5"
+                    >
+                      <h3 className="font-display text-sm font-semibold text-slate-900">
+                        Rate Your Escort Experience
+                      </h3>
 
-                    return (
-                      <li key={stage.status} className="relative flex gap-4 pb-7 last:pb-0">
-                        {/* Vertical Connector Line */}
-                        {!isLast && (
-                          <span
-                            aria-hidden="true"
-                            className={`absolute left-[15px] top-8 bottom-0 w-0.5 transition-colors duration-200 ${
-                              isCompleted ? 'bg-emerald-500' : 'bg-slate-200'
-                            }`}
-                          />
-                        )}
-
-                        {/* Timeline Status Node Circle */}
+                      {/* 5-Star Rating Selector */}
+                      <div className="mt-3">
+                        <span className="block text-xs font-medium text-slate-600">
+                          Select a star rating
+                        </span>
                         <div
-                          aria-hidden="true"
-                          className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 ${
-                            isCurrent
-                              ? 'bg-emerald-500 text-white ring-4 ring-emerald-100'
-                              : isCompleted
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-slate-200 text-slate-400'
-                          }`}
+                          className="mt-2 flex items-center gap-1.5"
+                          role="group"
+                          aria-label="5-star rating selector"
                         >
-                          {isCompleted ? (
-                            <Check className="h-4 w-4 stroke-[2.5]" />
-                          ) : (
-                            <StageIcon className="h-4 w-4" />
-                          )}
+                          {[1, 2, 3, 4, 5].map((starValue) => {
+                            const active = starValue <= displayedStars;
+                            return (
+                              <button
+                                key={starValue}
+                                type="button"
+                                aria-label={`Rate ${starValue} ${
+                                  starValue === 1 ? 'star' : 'stars'
+                                }`}
+                                aria-pressed={rating === starValue}
+                                onMouseEnter={() => setHoveredStar(starValue)}
+                                onMouseLeave={() => setHoveredStar(0)}
+                                onClick={() => {
+                                  setRating(starValue);
+                                  if (reviewError) setReviewError(null);
+                                }}
+                                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white transition-colors hover:border-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                              >
+                                <Star
+                                  className={`h-5 w-5 transition-colors ${
+                                    active
+                                      ? 'fill-amber-400 text-amber-500'
+                                      : 'text-slate-300'
+                                  }`}
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            );
+                          })}
+
+                          <span className="ml-2 font-mono text-xs tabular-nums text-slate-600">
+                            {rating > 0 ? `${rating}/5` : '0/5'}
+                          </span>
                         </div>
+                      </div>
 
-                        {/* Timeline Node Copy */}
-                        <div className="min-w-0 flex-1 pt-0.5">
-                          <div className="flex items-baseline justify-between gap-3">
-                            <span
-                              className={`font-display text-base font-semibold ${
-                                isCurrent
-                                  ? 'text-emerald-600'
-                                  : isCompleted
-                                    ? 'text-slate-900'
-                                    : 'text-slate-400'
-                              }`}
-                            >
-                              {stage.title}
-                            </span>
-                            <span
-                              className={`font-mono text-xs tabular-nums shrink-0 ${
-                                isPending ? 'text-slate-400' : 'text-slate-500'
-                              }`}
-                            >
-                              {isCurrent
-                                ? formattedUpdatedTime
-                                : isCompleted
-                                  ? 'Completed'
-                                  : 'Pending'}
-                            </span>
-                          </div>
+                      {/* Review Comments Textarea */}
+                      <div className="mt-4">
+                        <label
+                          htmlFor="client-review-comment"
+                          className="block text-xs font-medium text-slate-600"
+                        >
+                          Comments (Optional)
+                        </label>
+                        <textarea
+                          id="client-review-comment"
+                          rows={3}
+                          value={comment}
+                          onChange={(e) => setComment(e.target.value)}
+                          placeholder="How was your experience with our escort?"
+                          className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                        />
+                      </div>
 
-                          <p
-                            className={`mt-0.5 text-sm font-medium ${
-                              isPending
-                                ? 'text-slate-400'
-                                : isCurrent
-                                  ? 'text-slate-900'
-                                  : 'text-slate-700'
+                      {reviewError && (
+                        <p
+                          role="alert"
+                          className="mt-2.5 text-xs font-medium text-red-700"
+                        >
+                          {reviewError}
+                        </p>
+                      )}
+
+                      <button
+                        type="submit"
+                        className="mt-4 min-h-[48px] w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
+                      >
+                        Submit Review
+                      </button>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                /* Active 1–6 Vertical Delivery-Style Timeline */
+                <div className="px-5 py-6 sm:px-7 sm:py-8">
+                  <div className="mb-5 flex items-center justify-between gap-3">
+                    <h2 className="font-display text-sm font-semibold text-slate-900">
+                      Live Appointment Progress
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => fetchTracker(tracker.order_id)}
+                      className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums text-emerald-700 hover:underline"
+                    >
+                      <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                      <span>
+                        Step {activeStatus} of {TRACKER_STAGES.length}
+                      </span>
+                    </button>
+                  </div>
+
+                  <ol
+                    className="relative space-y-0"
+                    aria-label="Live escort progress timeline"
+                  >
+                    {TRACKER_STAGES.map((stage, index) => {
+                      const isCompletedStage = stage.status < activeStatus;
+                      const isCurrent = stage.status === activeStatus;
+                      const isPending = stage.status > activeStatus;
+                      const isLast = index === TRACKER_STAGES.length - 1;
+                      const StageIcon = stage.Icon;
+
+                      return (
+                        <li
+                          key={stage.status}
+                          className="relative flex gap-4 pb-7 last:pb-0"
+                        >
+                          {!isLast && (
+                            <span
+                              aria-hidden="true"
+                              className={`absolute left-[15px] top-8 bottom-0 w-0.5 transition-colors duration-200 ${
+                                isCompletedStage ? 'bg-emerald-500' : 'bg-slate-200'
+                              }`}
+                            />
+                          )}
+
+                          <div
+                            aria-hidden="true"
+                            className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 ${
+                              isCurrent
+                                ? 'bg-emerald-500 text-white ring-4 ring-emerald-100'
+                                : isCompletedStage
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-slate-200 text-slate-400'
                             }`}
                           >
-                            {stage.subtitle}
-                          </p>
+                            {isCompletedStage ? (
+                              <Check className="h-4 w-4 stroke-[2.5]" />
+                            ) : (
+                              <StageIcon className="h-4 w-4" />
+                            )}
+                          </div>
 
-                          {!isPending && (
-                            <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                              {stage.detail}
+                          <div className="min-w-0 flex-1 pt-0.5">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span
+                                className={`font-display text-base font-semibold ${
+                                  isCurrent
+                                    ? 'text-emerald-600'
+                                    : isCompletedStage
+                                      ? 'text-slate-900'
+                                      : 'text-slate-400'
+                                }`}
+                              >
+                                <span className="font-mono tabular-nums mr-1.5">
+                                  {stage.status}.
+                                </span>
+                                {stage.title}
+                              </span>
+                              <span
+                                className={`font-mono text-xs tabular-nums shrink-0 ${
+                                  isPending ? 'text-slate-400' : 'text-slate-500'
+                                }`}
+                              >
+                                {isCurrent
+                                  ? formattedUpdatedTime
+                                  : isCompletedStage
+                                    ? 'Completed'
+                                    : 'Pending'}
+                              </span>
+                            </div>
+
+                            <p
+                              className={`mt-0.5 text-sm font-medium ${
+                                isPending
+                                  ? 'text-slate-400'
+                                  : isCurrent
+                                    ? 'text-slate-900'
+                                    : 'text-slate-700'
+                              }`}
+                            >
+                              {stage.subtitle}
                             </p>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
+
+                            {!isPending && (
+                              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                                {stage.detail}
+                              </p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              )}
             </>
           )}
         </div>

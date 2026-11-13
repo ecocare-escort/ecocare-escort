@@ -15,9 +15,9 @@ export default async function handler(req, res) {
     const orderId = typeof order_id === 'string' ? order_id.trim() : '';
     const statusNum = Number(current_status);
 
-    if (!orderId || !Number.isInteger(statusNum) || statusNum < 1 || statusNum > 5) {
+    if (!orderId || !Number.isInteger(statusNum) || statusNum < 1 || statusNum > 6) {
       return res.status(400).json({
-        error: 'Invalid payload. Provide a valid order_id and current_status (1-5).',
+        error: 'Invalid payload. Provide a valid order_id and current_status (1-6).',
       });
     }
 

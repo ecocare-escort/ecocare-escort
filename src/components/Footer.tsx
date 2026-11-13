@@ -140,15 +140,6 @@ export function Footer({ onNavigate }: FooterProps) {
               <li>
                 <button
                   type="button"
-                  onClick={() => onNavigate('book')}
-                  className="font-medium text-emerald-300 transition-colors hover:text-emerald-200 hover:underline hover:underline-offset-4"
-                >
-                  Book Now
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
                   onClick={() => onNavigate('tracker')}
                   className="transition-colors hover:text-white hover:underline hover:underline-offset-4"
                 >
@@ -167,10 +158,10 @@ export function Footer({ onNavigate }: FooterProps) {
               <li>
                 <button
                   type="button"
-                  onClick={() => onNavigate('portal')}
-                  className="transition-colors hover:text-white hover:underline hover:underline-offset-4"
+                  onClick={() => onNavigate('book')}
+                  className="font-medium text-emerald-300 transition-colors hover:text-emerald-200 hover:underline hover:underline-offset-4"
                 >
-                  Employee Portal
+                  Book Now
                 </button>
               </li>
             </ul>
@@ -225,7 +216,17 @@ export function Footer({ onNavigate }: FooterProps) {
 
         {/* Bottom Copyright & Trust Bar */}
         <div className="mt-12 flex flex-col gap-3 border-t border-slate-800 pt-6 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-          <p>© 2026 EcoCare Escorts. All rights reserved.</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p>© 2026 EcoCare Escorts. All rights reserved.</p>
+            <span aria-hidden="true" className="text-slate-700">·</span>
+            <button
+              type="button"
+              onClick={() => onNavigate('portal')}
+              className="rounded text-xs text-slate-500/70 transition-colors hover:text-slate-300 focus-visible:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            >
+              Staff Login
+            </button>
+          </div>
           <p className="text-slate-300">
             Student-run Social Enterprise | CPR &amp; First-Aid Certified Companions
           </p>

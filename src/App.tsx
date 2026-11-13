@@ -274,7 +274,6 @@ export default function App() {
             orderId={route.orderId}
             bookingInfo={trackedBooking}
             onSelectOrderId={(id) => navigateTo('tracker', id)}
-            onOpenStaffPortal={() => navigateTo('portal')}
             onBackToHome={() => navigateTo('home')}
           />
         )}

@@ -23,6 +23,8 @@ async function ensureSchemaAndSeed() {
     CREATE TABLE IF NOT EXISTS staff (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'Care Companion',
+      phone TEXT NOT NULL DEFAULT '+60 12-345 6789',
       photo_url TEXT,
       cpr_certificate_id TEXT NOT NULL
     )
@@ -33,12 +35,72 @@ async function ensureSchemaAndSeed() {
       order_id TEXT PRIMARY KEY,
       client_name TEXT NOT NULL,
       hospital_name TEXT,
+      pickup_time TEXT,
       staff_id TEXT NOT NULL,
-      current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 5),
+      current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 6),
       updated_at TEXT NOT NULL,
+      completed_at TEXT,
       FOREIGN KEY (staff_id) REFERENCES staff(id)
     )
   `);
+
+  try {
+    await db.execute(
+      `ALTER TABLE staff ADD COLUMN role TEXT NOT NULL DEFAULT 'Care Companion'`
+    );
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(
+      `ALTER TABLE staff ADD COLUMN phone TEXT NOT NULL DEFAULT '+60 12-345 6789'`
+    );
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(`ALTER TABLE orders ADD COLUMN pickup_time TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(`ALTER TABLE orders ADD COLUMN completed_at TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  // Safely widen legacy CHECK (current_status BETWEEN 1 AND 5) constraint to 1..6
+  const ordersTableInfo = await db.execute(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'`
+  );
+  const ordersSql = String(ordersTableInfo.rows[0]?.sql ?? '');
+  if (ordersSql.includes('BETWEEN 1 AND 5')) {
+    await db.execute('PRAGMA foreign_keys = OFF');
+    await db.execute(`
+      CREATE TABLE orders_migrated (
+        order_id TEXT PRIMARY KEY,
+        client_name TEXT NOT NULL,
+        hospital_name TEXT,
+        pickup_time TEXT,
+        staff_id TEXT NOT NULL,
+        current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 6),
+        updated_at TEXT NOT NULL,
+        completed_at TEXT,
+        FOREIGN KEY (staff_id) REFERENCES staff(id)
+      )
+    `);
+    await db.execute(`
+      INSERT INTO orders_migrated (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at, completed_at)
+      SELECT order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at, completed_at
+      FROM orders
+    `);
+    await db.execute('DROP TABLE orders');
+    await db.execute('ALTER TABLE orders_migrated RENAME TO orders');
+    await db.execute('PRAGMA foreign_keys = ON');
+  }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS bookings (
@@ -61,26 +123,39 @@ async function ensureSchemaAndSeed() {
   `);
 
   await db.execute(`
-    INSERT OR IGNORE INTO staff (id, name, photo_url, cpr_certificate_id)
+    INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id)
     VALUES
-      ('staff-mei-ling', 'Mei Ling Tan', '/companions/mei-ling.jpg', 'SJAM-CPR-20489'),
-      ('staff-amirul', 'Amirul Hakim', '', 'SJAM-CPR-20514')
+      ('unassigned', 'Pending Dispatch', 'Unassigned', '', '', 'PENDING'),
+      ('staff-dong-hao', 'Dong Hao', 'Senior Care Companion', '+60 12-345 6789', 'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20612'),
+      ('staff-yenchi', 'Yenchi', 'Care Companion', '+60 12-678 9012', 'https://ui-avatars.com/api/?name=Yenchi&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20705'),
+      ('staff-mei-ling', 'Mei Ling Tan', 'Senior Care Companion', '+60 12-456 7890', 'https://ui-avatars.com/api/?name=Mei+Ling+Tan&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20489'),
+      ('staff-amirul', 'Amirul Hakim', 'Care Companion', '+60 12-890 1234', 'https://ui-avatars.com/api/?name=Amirul+Hakim&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20514')
   `);
 
-  const existingOrders = await db.execute('SELECT COUNT(*) AS cnt FROM orders');
-  const orderCount = Number(existingOrders.rows[0]?.cnt ?? 0);
-  if (orderCount === 0) {
-    const now = new Date().toISOString();
-    await db.execute({
-      sql: `
-        INSERT OR IGNORE INTO orders (order_id, client_name, hospital_name, staff_id, current_status, updated_at)
-        VALUES
-          ('ECE-842190', 'Mdm. Tan Siew Lan', 'Hospital Serdang', 'staff-mei-ling', 3, ?),
-          ('ECE-842205', 'En. Razak Bin Osman', 'Hospital Putrajaya', 'staff-amirul', 2, ?)
-      `,
-      args: [now, now],
-    });
-  }
+  const now = new Date().toISOString();
+  await db.execute({
+    sql: `
+      INSERT OR IGNORE INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
+      VALUES
+        ('ECE-8421', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', 'unassigned', 1, ?),
+        ('ECE-8425', 'En. Ahmad Zaki', 'Hospital Putrajaya', '10:30 AM', 'unassigned', 1, ?),
+        ('ECE-8430', 'Mdm. Lim Poh Choo', 'UMMC', '11:15 AM', 'unassigned', 1, ?),
+        ('ECE-842190', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', 'staff-mei-ling', 3, ?),
+        ('ECE-842205', 'En. Razak Bin Osman', 'Hospital Putrajaya', '08:30 AM', 'staff-amirul', 2, ?)
+    `,
+    args: [now, now, now, now, now],
+  });
+
+  await db.execute(`
+    DELETE FROM orders WHERE order_id IN ('ECE-842318', 'ECE-842324')
+  `);
+
+  await db.execute(`
+    UPDATE orders SET pickup_time = '09:00 AM' WHERE order_id = 'ECE-842190' AND (pickup_time IS NULL OR pickup_time = '')
+  `);
+  await db.execute(`
+    UPDATE orders SET pickup_time = '08:30 AM' WHERE order_id = 'ECE-842205' AND (pickup_time IS NULL OR pickup_time = '')
+  `);
 }
 
 interface BookingPayload {
@@ -177,10 +252,10 @@ async function startServer() {
       // Automatically create a trackable order linked to an assigned companion
       await db.execute({
         sql: `
-          INSERT INTO orders (order_id, client_name, hospital_name, staff_id, current_status, updated_at)
-          VALUES (?, ?, ?, ?, 1, ?)
+          INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
+          VALUES (?, ?, ?, ?, ?, 1, ?)
         `,
-        args: [bookingId, patientName, hospitalName, 'staff-mei-ling', createdAt],
+        args: [bookingId, patientName, hospitalName, timeText, 'staff-mei-ling', createdAt],
       });
 
       res.status(201).json({
@@ -212,18 +287,283 @@ async function startServer() {
     }
   });
 
-  app.get('/api/orders', async (_req: Request, res: Response) => {
+  app.get('/api/staff', async (_req: Request, res: Response) => {
     try {
+      const result = await db.execute(`
+        SELECT id, name, role, phone, photo_url, cpr_certificate_id
+        FROM staff
+        WHERE id != 'unassigned'
+        ORDER BY CASE id
+          WHEN 'staff-dong-hao' THEN 1
+          WHEN 'staff-yenchi' THEN 2
+          WHEN 'staff-mei-ling' THEN 3
+          WHEN 'staff-amirul' THEN 4
+          ELSE 5
+        END, name ASC
+      `);
+      res.status(200).json({ ok: true, staff: result.rows });
+    } catch (error) {
+      console.error('Failed to list staff:', error);
+      res.status(500).json({ error: 'Failed to load staff directory.' });
+    }
+  });
+
+  app.post('/api/update-staff-profile', async (req: Request, res: Response) => {
+    try {
+      const { id, name, phone, photo_url, cpr_certificate_id } = req.body || {};
+      const staffId = typeof id === 'string' ? id.trim() : '';
+      const fullName = typeof name === 'string' ? name.trim() : '';
+      const phoneNumber = typeof phone === 'string' ? phone.trim() : '';
+      const photoUrl = typeof photo_url === 'string' ? photo_url.trim() : '';
+      const cprId =
+        typeof cpr_certificate_id === 'string' ? cpr_certificate_id.trim() : '';
+
+      if (!staffId || !fullName || !cprId) {
+        res.status(400).json({
+          error: 'Staff ID, full name, and CPR Certificate ID are required.',
+        });
+        return;
+      }
+
+      const result = await db.execute({
+        sql: `
+          UPDATE staff
+          SET name = ?, phone = ?, photo_url = ?, cpr_certificate_id = ?
+          WHERE id = ?
+        `,
+        args: [fullName, phoneNumber, photoUrl, cprId, staffId],
+      });
+
+      if (result.rowsAffected === 0) {
+        res.status(404).json({ error: `Staff member ${staffId} not found.` });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        staff: {
+          id: staffId,
+          name: fullName,
+          phone: phoneNumber,
+          photo_url: photoUrl,
+          cpr_certificate_id: cprId,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to update staff profile:', error);
+      res.status(500).json({ error: 'Failed to update staff profile.' });
+    }
+  });
+
+  app.get('/api/pending-orders', async (_req: Request, res: Response) => {
+    try {
+      const result = await db.execute(`
+        SELECT
+          order_id,
+          client_name,
+          hospital_name,
+          COALESCE(NULLIF(pickup_time, ''), '09:00 AM') AS pickup_time,
+          staff_id,
+          current_status,
+          updated_at
+        FROM orders
+        WHERE staff_id = 'unassigned'
+          AND (completed_at IS NULL OR completed_at = '')
+        ORDER BY updated_at DESC
+      `);
+      res.status(200).json({ ok: true, pendingOrders: result.rows });
+    } catch (error) {
+      console.error('Failed to list pending orders:', error);
+      res.status(500).json({ error: 'Failed to load pending orders.' });
+    }
+  });
+
+  app.post('/api/claim-order', async (req: Request, res: Response) => {
+    try {
+      const { order_id, staff_id } = req.body || {};
+      const orderId = typeof order_id === 'string' ? order_id.trim() : '';
+      const staffId = typeof staff_id === 'string' ? staff_id.trim() : '';
+
+      if (!orderId || !staffId || staffId === 'unassigned') {
+        res.status(400).json({ error: 'Provide valid order_id and staff_id.' });
+        return;
+      }
+
+      const updatedAt = new Date().toISOString();
+      const result = await db.execute({
+        sql: `
+          UPDATE orders
+          SET staff_id = ?, current_status = 1, updated_at = ?
+          WHERE order_id = ?
+        `,
+        args: [staffId, updatedAt, orderId],
+      });
+
+      if (result.rowsAffected === 0) {
+        res.status(404).json({ error: `Order ${orderId} not found.` });
+        return;
+      }
+
+      const orderRes = await db.execute({
+        sql: `
+          SELECT
+            order_id,
+            client_name,
+            hospital_name,
+            COALESCE(NULLIF(pickup_time, ''), '09:00 AM') AS pickup_time,
+            staff_id,
+            current_status,
+            updated_at
+          FROM orders
+          WHERE order_id = ?
+          LIMIT 1
+        `,
+        args: [orderId],
+      });
+
+      res.status(200).json({ ok: true, order: orderRes.rows[0] });
+    } catch (error) {
+      console.error('Failed to claim order:', error);
+      res.status(500).json({ error: 'Failed to claim order.' });
+    }
+  });
+
+  app.post('/api/release-order', async (req: Request, res: Response) => {
+    try {
+      const { order_id } = req.body || {};
+      const orderId = typeof order_id === 'string' ? order_id.trim() : '';
+      if (!orderId) {
+        res.status(400).json({ error: 'Provide valid order_id.' });
+        return;
+      }
+
+      const updatedAt = new Date().toISOString();
+      const result = await db.execute({
+        sql: `
+          UPDATE orders
+          SET staff_id = 'unassigned', current_status = 1, updated_at = ?
+          WHERE order_id = ?
+        `,
+        args: [updatedAt, orderId],
+      });
+
+      if (result.rowsAffected === 0) {
+        res.status(404).json({ error: `Order ${orderId} not found.` });
+        return;
+      }
+
+      res.status(200).json({ ok: true, order_id: orderId });
+    } catch (error) {
+      console.error('Failed to release order:', error);
+      res.status(500).json({ error: 'Failed to release order.' });
+    }
+  });
+
+  app.post('/api/complete-order', async (req: Request, res: Response) => {
+    try {
+      const { order_id } = req.body || {};
+      const orderId = typeof order_id === 'string' ? order_id.trim() : '';
+      if (!orderId) {
+        res.status(400).json({ error: 'Provide valid order_id.' });
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const result = await db.execute({
+        sql: `
+          UPDATE orders
+          SET current_status = 6, completed_at = ?, updated_at = ?
+          WHERE order_id = ?
+        `,
+        args: [nowIso, nowIso, orderId],
+      });
+
+      if (result.rowsAffected === 0) {
+        res.status(404).json({ error: `Order ${orderId} not found.` });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        order_id: orderId,
+        current_status: 6,
+        completed_at: nowIso,
+      });
+    } catch (error) {
+      console.error('Failed to complete order:', error);
+      res.status(500).json({ error: 'Failed to complete order.' });
+    }
+  });
+
+  app.get('/api/orders', async (req: Request, res: Response) => {
+    try {
+      const staffId =
+        typeof req.query?.staff_id === 'string' ? req.query.staff_id.trim() : '';
+
+      if (staffId) {
+        const staffResult = await db.execute({
+          sql: `
+            SELECT id, name, role, phone, photo_url, cpr_certificate_id
+            FROM staff
+            WHERE id = ?
+            LIMIT 1
+          `,
+          args: [staffId],
+        });
+
+        if (staffResult.rows.length === 0) {
+          res.status(404).json({ error: `Staff member "${staffId}" not found.` });
+          return;
+        }
+
+        const ordersResult = await db.execute({
+          sql: `
+            SELECT
+              o.order_id,
+              o.client_name,
+              o.hospital_name,
+              COALESCE(NULLIF(o.pickup_time, ''), '09:00 AM') AS pickup_time,
+              o.staff_id,
+              o.current_status,
+              o.updated_at,
+              s.name AS staff_name,
+              s.role AS staff_role,
+              s.phone AS staff_phone,
+              s.photo_url AS staff_photo_url,
+              s.cpr_certificate_id AS staff_cpr_certificate_id
+            FROM orders o
+            INNER JOIN staff s ON o.staff_id = s.id
+            WHERE o.staff_id = ?
+              AND (o.completed_at IS NULL OR o.completed_at = '')
+            ORDER BY o.updated_at DESC
+          `,
+          args: [staffId],
+        });
+
+        res.status(200).json({
+          ok: true,
+          staff: staffResult.rows[0],
+          activeOrder: ordersResult.rows[0] ?? null,
+          orders: ordersResult.rows,
+        });
+        return;
+      }
+
       const result = await db.execute(`
         SELECT
           o.order_id,
           o.client_name,
           o.hospital_name,
+          COALESCE(NULLIF(o.pickup_time, ''), '09:00 AM') AS pickup_time,
+          o.staff_id,
           o.current_status,
           o.updated_at,
-          s.name AS staff_name
+          s.name AS staff_name,
+          s.role AS staff_role,
+          s.phone AS staff_phone
         FROM orders o
         INNER JOIN staff s ON o.staff_id = s.id
+        WHERE o.staff_id != 'unassigned'
         ORDER BY o.updated_at DESC
       `);
       res.status(200).json({ ok: true, orders: result.rows });
@@ -239,21 +579,22 @@ async function startServer() {
       const orderId = typeof order_id === 'string' ? order_id.trim() : '';
       const statusNum = Number(current_status);
 
-      if (!orderId || !Number.isInteger(statusNum) || statusNum < 1 || statusNum > 5) {
+      if (!orderId || !Number.isInteger(statusNum) || statusNum < 1 || statusNum > 6) {
         res.status(400).json({
-          error: 'Invalid payload. Provide a valid order_id and current_status (1-5).',
+          error: 'Invalid payload. Provide a valid order_id and current_status (1-6).',
         });
         return;
       }
 
       const updatedAt = new Date().toISOString();
+      const completedAt = statusNum === 6 ? updatedAt : null;
       const result = await db.execute({
         sql: `
           UPDATE orders
-          SET current_status = ?, updated_at = ?
+          SET current_status = ?, completed_at = ?, updated_at = ?
           WHERE order_id = ?
         `,
-        args: [statusNum, updatedAt, orderId],
+        args: [statusNum, completedAt, updatedAt, orderId],
       });
 
       if (result.rowsAffected === 0) {
@@ -293,6 +634,7 @@ async function startServer() {
             o.updated_at,
             s.id AS staff_id,
             s.name AS staff_name,
+            s.phone AS staff_phone,
             s.photo_url AS staff_photo_url,
             s.cpr_certificate_id AS staff_cpr_certificate_id
           FROM orders o
