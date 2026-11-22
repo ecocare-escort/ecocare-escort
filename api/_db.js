@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createClient } from '@libsql/client';
 
 const isTursoConfigured = Boolean(
@@ -16,6 +17,10 @@ let initPromise = null;
 export async function ensureSchemaAndSeed() {
   if (!initPromise) {
     initPromise = (async () => {
+      // Drop child table (orders) first due to foreign key reference to staff
+      await db.execute('DROP TABLE IF EXISTS orders');
+      await db.execute('DROP TABLE IF EXISTS staff');
+
       await db.execute(`
         CREATE TABLE IF NOT EXISTS staff (
           id TEXT PRIMARY KEY,
@@ -41,65 +46,8 @@ export async function ensureSchemaAndSeed() {
         )
       `);
 
-      try {
-        await db.execute(
-          `ALTER TABLE staff ADD COLUMN role TEXT NOT NULL DEFAULT 'Care Companion'`
-        );
-      } catch {
-        // Column already exists
-      }
-
-      try {
-        await db.execute(
-          `ALTER TABLE staff ADD COLUMN phone TEXT NOT NULL DEFAULT '+60 12-345 6789'`
-        );
-      } catch {
-        // Column already exists
-      }
-
-      try {
-        await db.execute(`ALTER TABLE orders ADD COLUMN pickup_time TEXT`);
-      } catch {
-        // Column already exists
-      }
-
-      try {
-        await db.execute(`ALTER TABLE orders ADD COLUMN completed_at TEXT`);
-      } catch {
-        // Column already exists
-      }
-
-      const ordersTableInfo = await db.execute(
-        `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'`
-      );
-      const ordersSql = String(ordersTableInfo.rows[0]?.sql ?? '');
-      if (ordersSql.includes('BETWEEN 1 AND 5')) {
-        await db.execute('PRAGMA foreign_keys = OFF');
-        await db.execute(`
-          CREATE TABLE orders_migrated (
-            order_id TEXT PRIMARY KEY,
-            client_name TEXT NOT NULL,
-            hospital_name TEXT,
-            pickup_time TEXT,
-            staff_id TEXT NOT NULL,
-            current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 6),
-            updated_at TEXT NOT NULL,
-            completed_at TEXT,
-            FOREIGN KEY (staff_id) REFERENCES staff(id)
-          )
-        `);
-        await db.execute(`
-          INSERT INTO orders_migrated (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at, completed_at)
-          SELECT order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at, completed_at
-          FROM orders
-        `);
-        await db.execute('DROP TABLE orders');
-        await db.execute('ALTER TABLE orders_migrated RENAME TO orders');
-        await db.execute('PRAGMA foreign_keys = ON');
-      }
-
       await db.execute(`
-        INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id)
+        INSERT INTO staff (id, name, role, phone, photo_url, cpr_certificate_id)
         VALUES
           ('unassigned', 'Pending Dispatch', 'Unassigned', '', '', 'PENDING'),
           ('staff-dong-hao', 'Dong Hao', 'Senior Care Companion', '+60 12-345 6789', 'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20612'),
@@ -111,7 +59,7 @@ export async function ensureSchemaAndSeed() {
       const now = new Date().toISOString();
       await db.execute({
         sql: `
-          INSERT OR IGNORE INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
+          INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
           VALUES
             ('ECE-8421', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', 'unassigned', 1, ?),
             ('ECE-8425', 'En. Ahmad Zaki', 'Hospital Putrajaya', '10:30 AM', 'unassigned', 1, ?),

@@ -36,11 +36,12 @@ export function Footer({ onNavigate }: FooterProps) {
               <div className="mt-3 flex items-center gap-3">
                 {/* Facebook */}
                 <a
-                  href="https://www.facebook.com"
+                  href="https://www.facebook.com/EcocareEscort/"
                   target="_blank"
                   rel="noopener noreferrer"
+                  title="Facebook"
                   aria-label="EcoCare Escorts on Facebook"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -52,13 +53,33 @@ export function Footer({ onNavigate }: FooterProps) {
                   </svg>
                 </a>
 
-                {/* Instagram */}
+                {/* YouTube */}
                 <a
-                  href="https://www.instagram.com"
+                  href="https://www.youtube.com/@EcoCare-escort"
                   target="_blank"
                   rel="noopener noreferrer"
+                  title="YouTube"
+                  aria-label="EcoCare Escorts on YouTube"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                  >
+                    <path d="M23.5 6.2a3.01 3.01 0 0 0-2.12-2.13C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.38.57A3.01 3.01 0 0 0 .5 6.2 31.2 31.2 0 0 0 0 12a31.2 31.2 0 0 0 .5 5.8 3.01 3.01 0 0 0 2.12 2.13c1.88.57 9.38.57 9.38.57s7.5 0 9.38-.57a3.01 3.01 0 0 0 2.12-2.13A31.2 31.2 0 0 0 24 12a31.2 31.2 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z" />
+                  </svg>
+                </a>
+
+                {/* Instagram */}
+                <a
+                  href="https://www.instagram.com/ecocare.escort/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Instagram"
                   aria-label="EcoCare Escorts on Instagram"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -78,11 +99,12 @@ export function Footer({ onNavigate }: FooterProps) {
 
                 {/* TikTok */}
                 <a
-                  href="https://www.tiktok.com"
+                  href="https://www.tiktok.com/@ecocare.escort"
                   target="_blank"
                   rel="noopener noreferrer"
+                  title="TikTok"
                   aria-label="EcoCare Escorts on TikTok"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -91,24 +113,6 @@ export function Footer({ onNavigate }: FooterProps) {
                     aria-hidden="true"
                   >
                     <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.34 0 .66.06.96.16V9.01a6.3 6.3 0 0 0-.96-.08 6.34 6.34 0 0 0-6.34 6.35 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.35-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.76a4.85 4.85 0 0 1-1.03-.07Z" />
-                  </svg>
-                </a>
-
-                {/* YouTube */}
-                <a
-                  href="https://www.youtube.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="EcoCare Escorts on YouTube"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-300 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="h-4 w-4"
-                    aria-hidden="true"
-                  >
-                    <path d="M23.5 6.2a3.01 3.01 0 0 0-2.12-2.13C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.38.57A3.01 3.01 0 0 0 .5 6.2 31.2 31.2 0 0 0 0 12a31.2 31.2 0 0 0 .5 5.8 3.01 3.01 0 0 0 2.12 2.13c1.88.57 9.38.57 9.38.57s7.5 0 9.38-.57a3.01 3.01 0 0 0 2.12-2.13A31.2 31.2 0 0 0 24 12a31.2 31.2 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z" />
                   </svg>
                 </a>
               </div>

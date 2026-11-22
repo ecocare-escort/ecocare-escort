@@ -61,6 +61,12 @@ async function ensureSchemaAndSeed() {
   }
 
   try {
+    await db.execute(`ALTER TABLE orders ADD COLUMN hospital_name TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  try {
     await db.execute(`ALTER TABLE orders ADD COLUMN pickup_time TEXT`);
   } catch {
     // Column already exists
