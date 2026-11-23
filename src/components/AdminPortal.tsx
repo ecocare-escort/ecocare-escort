@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   Car,
   CheckCircle2,
+  ClipboardList,
+  ExternalLink,
   Eye,
   EyeOff,
   KeyRound,
@@ -36,6 +38,58 @@ interface StaffRecord {
   vehicle_color?: string | null;
   vehicle_plate?: string | null;
 }
+
+interface OrderMonitorRecord {
+  order_id: string;
+  client_name: string;
+  hospital_name: string | null;
+  pickup_time: string | null;
+  staff_id: string;
+  driver_id: string | null;
+  current_status: number;
+  updated_at: string;
+  completed_at: string | null;
+  companion_name: string | null;
+  companion_phone: string | null;
+  driver_name: string | null;
+  driver_vehicle_model: string | null;
+  driver_vehicle_plate: string | null;
+}
+
+type AdminTab = 'staff' | 'orders';
+
+const ORDER_STATUS_META: Record<number, { label: string; badgeClass: string; barClass: string }> = {
+  1: {
+    label: 'Assigned / Pending',
+    badgeClass: 'border-amber-200 bg-amber-50 text-amber-800',
+    barClass: 'bg-amber-500',
+  },
+  2: {
+    label: 'En Route',
+    badgeClass: 'border-sky-200 bg-sky-50 text-sky-800',
+    barClass: 'bg-sky-600',
+  },
+  3: {
+    label: 'In Queue',
+    badgeClass: 'border-indigo-200 bg-indigo-50 text-indigo-800',
+    barClass: 'bg-indigo-600',
+  },
+  4: {
+    label: 'Pharmacy',
+    badgeClass: 'border-teal-200 bg-teal-50 text-teal-800',
+    barClass: 'bg-teal-600',
+  },
+  5: {
+    label: 'Heading Home',
+    badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    barClass: 'bg-emerald-600',
+  },
+  6: {
+    label: 'Completed',
+    badgeClass: 'border-emerald-300 bg-emerald-100 text-emerald-900',
+    barClass: 'bg-emerald-700',
+  },
+};
 
 interface AdminPortalProps {
   onBackToPortal: () => void;
@@ -106,9 +160,17 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
   const [editError, setEditError] = useState<string | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Inline Remove confirmation state
+  // Inline Remove staff confirmation state
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Admin Tab & Order Management state
+  const [activeTab, setActiveTab] = useState<AdminTab>('staff');
+  const [orders, setOrders] = useState<OrderMonitorRecord[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState<boolean>(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
 
   const fetchStaffDirectory = useCallback(async (passcode?: string) => {
     setLoadingStaff(true);
@@ -139,6 +201,38 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
     }
   }, []);
 
+  const fetchOrders = useCallback(async (passcode: string) => {
+    setLoadingOrders(true);
+    setOrdersError(null);
+    try {
+      const response = await fetch('/api/orders', {
+        headers: { 'x-admin-passcode': passcode },
+      });
+      const data = await parseJsonSafe(response);
+
+      if (response.status === 401) {
+        window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
+        setVerifiedPasscode(null);
+        setAuthError('Admin session expired. Please sign in again.');
+        return false;
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load orders from Turso.');
+      }
+
+      setOrders((data?.orders || []) as OrderMonitorRecord[]);
+      return true;
+    } catch (err) {
+      setOrdersError(
+        err instanceof Error ? err.message : 'Unable to fetch orders.'
+      );
+      return false;
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, []);
+
   // Restore saved sessionStorage passcode on mount
   useEffect(() => {
     let active = true;
@@ -158,6 +252,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
         if (response.ok && data?.staff) {
           setVerifiedPasscode(stored);
           setStaffList(data.staff as StaffRecord[]);
+          fetchOrders(stored);
         } else {
           window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
         }
@@ -172,7 +267,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
     return () => {
       active = false;
     };
-  }, []);
+  }, [fetchOrders]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,6 +294,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
       setStaffList((data?.staff || []) as StaffRecord[]);
       setPasscodeInput('');
       setActionFeedback(null);
+      fetchOrders(candidate);
     } catch (err) {
       setAuthError(
         err instanceof Error ? err.message : 'Unable to verify admin passcode.'
@@ -212,10 +308,12 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
     window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
     setVerifiedPasscode(null);
     setStaffList([]);
+    setOrders([]);
     setPasscodeInput('');
     setAuthError(null);
     setActionFeedback(null);
     setConfirmDeleteId(null);
+    setConfirmDeleteOrderId(null);
     setEditingStaff(null);
   };
 
@@ -491,6 +589,49 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
     }
   };
 
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!verifiedPasscode || deletingOrderId) return;
+
+    setDeletingOrderId(orderId);
+    setOrdersError(null);
+    setActionFeedback(null);
+
+    try {
+      const response = await fetch(
+        `/api/orders?order_id=${encodeURIComponent(orderId)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'x-admin-passcode': verifiedPasscode,
+          },
+        }
+      );
+      const data = await parseJsonSafe(response);
+
+      if (response.status === 401) {
+        handleSignOut();
+        setAuthError('Admin session expired. Please sign in again.');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to delete order.');
+      }
+
+      setOrders((prev) =>
+        prev.filter((o) => o.order_id.toUpperCase() !== orderId.toUpperCase())
+      );
+      setConfirmDeleteOrderId(null);
+      setActionFeedback(`Permanently deleted order ${orderId} from Turso.`);
+    } catch (err) {
+      setOrdersError(
+        err instanceof Error ? err.message : 'Unable to delete order.'
+      );
+    } finally {
+      setDeletingOrderId(null);
+    }
+  };
+
   return (
     <section
       aria-label="Admin Staff Management Portal"
@@ -602,35 +743,123 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
             </form>
           </div>
         ) : (
-          /* Authenticated Staff Directory & Management Dashboard */
+          /* Authenticated Staff Directory & Order Management Dashboard */
           <div className="space-y-6">
             {/* Header Bar */}
-            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-medium text-emerald-700">
-                  <Users className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Admin Console · Turso Staff Directory</span>
+            <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-medium text-emerald-700">
+                    {activeTab === 'staff' ? (
+                      <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    <span>
+                      Admin Console ·{' '}
+                      {activeTab === 'staff'
+                        ? 'Turso Staff Directory'
+                        : 'Live Order Monitor'}
+                    </span>
+                  </div>
+                  <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900">
+                    {activeTab === 'staff'
+                      ? 'Staff Directory & Access Control'
+                      : 'Order Management & Live Progress'}
+                  </h1>
+                  <p className="mt-0.5 text-sm text-slate-600">
+                    {activeTab === 'staff'
+                      ? 'Changes made here immediately update companion profiles, driver dispatch pools, and portal credentials.'
+                      : 'Monitor real-time escort stages across all orders and permanently clean up test or obsolete bookings.'}
+                  </p>
                 </div>
-                <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900">
-                  Staff Directory &amp; Access Control
-                </h1>
-                <p className="mt-0.5 text-sm text-slate-600">
-                  Changes made here immediately update companion profiles and login credentials in the Employee Portal.
-                </p>
+
+                {activeTab === 'staff' ? (
+                  <button
+                    type="button"
+                    onClick={() => fetchStaffDirectory(verifiedPasscode)}
+                    disabled={loadingStaff}
+                    className="inline-flex min-h-[44px] items-center gap-2 self-start rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 sm:self-center"
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${loadingStaff ? 'animate-spin' : ''}`}
+                      aria-hidden="true"
+                    />
+                    <span>Refresh List</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fetchOrders(verifiedPasscode)}
+                    disabled={loadingOrders}
+                    className="inline-flex min-h-[44px] items-center gap-2 self-start rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 sm:self-center"
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${loadingOrders ? 'animate-spin' : ''}`}
+                      aria-hidden="true"
+                    />
+                    <span>Refresh Orders</span>
+                  </button>
+                )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => fetchStaffDirectory(verifiedPasscode)}
-                disabled={loadingStaff}
-                className="inline-flex min-h-[44px] items-center gap-2 self-start rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 sm:self-center"
+              {/* Tab Switcher */}
+              <div
+                role="tablist"
+                aria-label="Admin management sections"
+                className="flex flex-wrap gap-2 border-t border-slate-100 pt-3.5"
               >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${loadingStaff ? 'animate-spin' : ''}`}
-                  aria-hidden="true"
-                />
-                <span>Refresh List</span>
-              </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'staff'}
+                  onClick={() => setActiveTab('staff')}
+                  className={`inline-flex min-h-[40px] items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                    activeTab === 'staff'
+                      ? 'bg-emerald-700 text-white'
+                      : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Staff Directory &amp; Access Control</span>
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-mono text-[11px] tabular-nums ${
+                      activeTab === 'staff'
+                        ? 'bg-emerald-800 text-emerald-100'
+                        : 'bg-white text-slate-600'
+                    }`}
+                  >
+                    {staffList.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'orders'}
+                  onClick={() => {
+                    setActiveTab('orders');
+                    if (verifiedPasscode) fetchOrders(verifiedPasscode);
+                  }}
+                  className={`inline-flex min-h-[40px] items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                    activeTab === 'orders'
+                      ? 'bg-emerald-700 text-white'
+                      : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Order Management &amp; Live Progress</span>
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-mono text-[11px] tabular-nums ${
+                      activeTab === 'orders'
+                        ? 'bg-emerald-800 text-emerald-100'
+                        : 'bg-white text-slate-600'
+                    }`}
+                  >
+                    {orders.length}
+                  </span>
+                </button>
+              </div>
             </div>
 
             {actionFeedback && (
@@ -655,7 +884,8 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
+            {activeTab === 'staff' ? (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
               {/* Left Column: Add New Staff Form */}
               <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 lg:col-span-5">
                 <h2 className="font-display text-base font-semibold text-slate-900">
@@ -1167,6 +1397,287 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                 )}
               </div>
             </div>
+            ) : (
+              /* Tab 2: Order Management & Live Progress Monitor */
+              <div className="space-y-6">
+                {(() => {
+                  const totalOrders = orders.length;
+                  const completedCount = orders.filter(
+                    (o) => Number(o.current_status) === 6 || Boolean(o.completed_at)
+                  ).length;
+                  const pendingUnassignedCount = orders.filter(
+                    (o) =>
+                      Number(o.current_status) < 6 &&
+                      !o.completed_at &&
+                      (!o.staff_id || o.staff_id === 'unassigned')
+                  ).length;
+                  const inProgressCount = orders.filter(
+                    (o) =>
+                      !o.completed_at &&
+                      Number(o.current_status) >= 2 &&
+                      Number(o.current_status) <= 5
+                  ).length;
+
+                  return (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-medium text-slate-500">
+                          Total Orders
+                        </p>
+                        <p className="mt-1 font-display text-2xl font-bold tabular-nums text-slate-900">
+                          {totalOrders}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-amber-200 bg-white p-4">
+                        <p className="text-xs font-medium text-amber-700">
+                          Pending / Unassigned
+                        </p>
+                        <p className="mt-1 font-display text-2xl font-bold tabular-nums text-amber-800">
+                          {pendingUnassignedCount}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-sky-200 bg-white p-4">
+                        <p className="text-xs font-medium text-sky-700">
+                          In Progress (Steps 2–5)
+                        </p>
+                        <p className="mt-1 font-display text-2xl font-bold tabular-nums text-sky-800">
+                          {inProgressCount}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-emerald-200 bg-white p-4">
+                        <p className="text-xs font-medium text-emerald-700">
+                          Completed (Step 6)
+                        </p>
+                        <p className="mt-1 font-display text-2xl font-bold tabular-nums text-emerald-800">
+                          {completedCount}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+                    <div>
+                      <h2 className="font-display text-base font-semibold text-slate-900">
+                        All Tracked Orders
+                      </h2>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Ordered by most recently updated in Turso.
+                      </p>
+                    </div>
+                    <span className="font-mono text-xs tabular-nums text-slate-500">
+                      {orders.length} records
+                    </span>
+                  </div>
+
+                  {ordersError && (
+                    <p
+                      role="alert"
+                      className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+                    >
+                      {ordersError}
+                    </p>
+                  )}
+
+                  {loadingOrders && orders.length === 0 ? (
+                    <div className="mt-4 space-y-3">
+                      {[1, 2, 3].map((item) => (
+                        <div
+                          key={item}
+                          className="h-24 animate-pulse rounded-lg border border-slate-100 bg-slate-50"
+                        />
+                      ))}
+                    </div>
+                  ) : orders.length === 0 ? (
+                    <div className="mt-6 rounded-lg border border-dashed border-slate-200 px-4 py-10 text-center">
+                      <ClipboardList
+                        className="mx-auto h-7 w-7 text-slate-300"
+                        aria-hidden="true"
+                      />
+                      <p className="mt-2 text-sm font-medium text-slate-700">
+                        No orders in database
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        New bookings from the Smart Booking Form will appear here automatically.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 divide-y divide-slate-100">
+                      {orders.map((order) => {
+                        const stepNum = Math.min(
+                          6,
+                          Math.max(1, Number(order.current_status || 1))
+                        );
+                        const meta = ORDER_STATUS_META[stepNum] || ORDER_STATUS_META[1];
+                        const progressPercent = Math.round((stepNum / 6) * 100);
+                        const isConfirmingDelete = confirmDeleteOrderId === order.order_id;
+                        const isDeleting = deletingOrderId === order.order_id;
+                        const updatedLabel = order.updated_at
+                          ? new Date(order.updated_at).toLocaleString([], {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '—';
+
+                        return (
+                          <div
+                            key={order.order_id}
+                            className="flex flex-col gap-4 py-4 first:pt-1 last:pb-1 lg:flex-row lg:items-center lg:justify-between"
+                          >
+                            {/* Order ID & Patient / Hospital */}
+                            <div className="min-w-0 lg:w-[30%]">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-mono text-sm font-bold tabular-nums text-slate-900">
+                                  {order.order_id}
+                                </span>
+                                <span aria-hidden="true" className="text-slate-300">
+                                  ·
+                                </span>
+                                <span className="truncate font-display text-sm font-semibold text-slate-800">
+                                  {order.client_name}
+                                </span>
+                              </div>
+                              <p className="mt-0.5 truncate text-xs text-slate-600">
+                                {order.hospital_name || 'Klang Valley Hospital'}
+                                {order.pickup_time ? (
+                                  <>
+                                    <span aria-hidden="true" className="mx-1.5 text-slate-300">
+                                      ·
+                                    </span>
+                                    <span className="font-mono tabular-nums">
+                                      {order.pickup_time}
+                                    </span>
+                                  </>
+                                ) : null}
+                              </p>
+                              <p className="mt-1 font-mono text-[11px] tabular-nums text-slate-400">
+                                Updated {updatedLabel}
+                              </p>
+                            </div>
+
+                            {/* Progress Bar / Status Badge */}
+                            <div className="lg:w-[26%]">
+                              <div className="flex items-center justify-between gap-2">
+                                <span
+                                  className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${meta.badgeClass}`}
+                                >
+                                  Step {stepNum}/6 · {meta.label}
+                                </span>
+                                <span className="font-mono text-[11px] tabular-nums text-slate-500">
+                                  {progressPercent}%
+                                </span>
+                              </div>
+                              <div
+                                aria-hidden="true"
+                                className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100"
+                              >
+                                <div
+                                  className={`h-full rounded-full transition-all ${meta.barClass}`}
+                                  style={{ width: `${progressPercent}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Assigned Companion & Driver */}
+                            <div className="space-y-1 text-xs lg:w-[26%]">
+                              <div className="flex items-center gap-1.5 text-slate-700">
+                                <User
+                                  className="h-3.5 w-3.5 shrink-0 text-slate-400"
+                                  aria-hidden="true"
+                                />
+                                <span className="text-slate-500">Companion:</span>
+                                {order.companion_name ? (
+                                  <span className="truncate font-medium text-slate-900">
+                                    {order.companion_name}
+                                  </span>
+                                ) : (
+                                  <span className="font-medium text-amber-700">
+                                    Unassigned
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-1.5 text-slate-700">
+                                <Car
+                                  className="h-3.5 w-3.5 shrink-0 text-emerald-700"
+                                  aria-hidden="true"
+                                />
+                                <span className="text-slate-500">Driver:</span>
+                                {order.driver_name ? (
+                                  <>
+                                    <span className="truncate font-medium text-slate-900">
+                                      {order.driver_name}
+                                    </span>
+                                    {order.driver_vehicle_plate && (
+                                      <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-800">
+                                        {order.driver_vehicle_plate}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-slate-400">Not assigned</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Quick Actions */}
+                            <div className="flex flex-wrap items-center gap-2 lg:justify-end shrink-0">
+                              <a
+                                href={`/track/${encodeURIComponent(order.order_id)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-emerald-700 hover:bg-emerald-50/50 hover:text-emerald-800 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                                <span>View Tracker</span>
+                              </a>
+
+                              {isConfirmingDelete ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={isDeleting}
+                                    onClick={() => handleDeleteOrder(order.order_id)}
+                                    className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                                  >
+                                    {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isDeleting}
+                                    onClick={() => setConfirmDeleteOrderId(null)}
+                                    className="inline-flex min-h-[36px] items-center rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setConfirmDeleteOrderId(order.order_id)
+                                  }
+                                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                  <span>Delete</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

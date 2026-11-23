@@ -195,34 +195,56 @@ export async function ensureSchemaAndSeed() {
         }
       }
 
-      // Only seed default orders if the orders table is completely empty
-      const ordersCountResult = await db.execute(
-        `SELECT COUNT(*) AS count FROM orders`
-      );
-      const ordersCount = Number(ordersCountResult.rows[0]?.count ?? 0);
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      `);
 
-      if (ordersCount === 0) {
-        const existingIds = new Set(existingStaff.rows.map((r) => String(r.id)));
-        const meiLingStaffId = existingIds.has('staff-mei-ling')
-          ? 'staff-mei-ling'
-          : 'unassigned';
-        const amirulStaffId = existingIds.has('staff-amirul')
-          ? 'staff-amirul'
-          : 'unassigned';
+      // Only seed default orders if the database has never seeded orders before
+      const ordersSeedFlagRes = await db.execute({
+        sql: `SELECT value FROM app_settings WHERE key = 'orders_seeded' LIMIT 1`,
+        args: [],
+      });
+      const ordersAlreadySeeded =
+        ordersSeedFlagRes.rows.length > 0 &&
+        String(ordersSeedFlagRes.rows[0]?.value ?? '') === '1';
 
-        const now = new Date().toISOString();
-        await db.execute({
-          sql: `
-            INSERT OR IGNORE INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
-            VALUES
-              ('ECE-8421', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', 'unassigned', 1, ?),
-              ('ECE-8425', 'En. Ahmad Zaki', 'Hospital Putrajaya', '10:30 AM', 'unassigned', 1, ?),
-              ('ECE-8430', 'Mdm. Lim Poh Choo', 'UMMC', '11:15 AM', 'unassigned', 1, ?),
-              ('ECE-842190', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', ?, 3, ?),
-              ('ECE-842205', 'En. Razak Bin Osman', 'Hospital Putrajaya', '08:30 AM', ?, 2, ?)
-          `,
-          args: [now, now, now, meiLingStaffId, now, amirulStaffId, now],
-        });
+      if (!ordersAlreadySeeded) {
+        const ordersCountResult = await db.execute(
+          `SELECT COUNT(*) AS count FROM orders`
+        );
+        const ordersCount = Number(ordersCountResult.rows[0]?.count ?? 0);
+
+        if (ordersCount === 0) {
+          const existingIds = new Set(existingStaff.rows.map((r) => String(r.id)));
+          const meiLingStaffId = existingIds.has('staff-mei-ling')
+            ? 'staff-mei-ling'
+            : 'unassigned';
+          const amirulStaffId = existingIds.has('staff-amirul')
+            ? 'staff-amirul'
+            : 'unassigned';
+
+          const now = new Date().toISOString();
+          await db.execute({
+            sql: `
+              INSERT OR IGNORE INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
+              VALUES
+                ('ECE-8421', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', 'unassigned', 1, ?),
+                ('ECE-8425', 'En. Ahmad Zaki', 'Hospital Putrajaya', '10:30 AM', 'unassigned', 1, ?),
+                ('ECE-8430', 'Mdm. Lim Poh Choo', 'UMMC', '11:15 AM', 'unassigned', 1, ?),
+                ('ECE-842190', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', ?, 3, ?),
+                ('ECE-842205', 'En. Razak Bin Osman', 'Hospital Putrajaya', '08:30 AM', ?, 2, ?)
+            `,
+            args: [now, now, now, meiLingStaffId, now, amirulStaffId, now],
+          });
+        }
+
+        await db.execute(`
+          INSERT OR REPLACE INTO app_settings (key, value)
+          VALUES ('orders_seeded', '1')
+        `);
       }
     })().catch((err) => {
       initPromise = null;
