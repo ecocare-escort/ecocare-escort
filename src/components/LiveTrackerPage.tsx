@@ -9,6 +9,7 @@ import {
   Phone,
   Pill,
   RefreshCw,
+  Search,
   Share2,
   ShieldCheck,
   Star,
@@ -118,11 +119,11 @@ export function LiveTrackerPage({
   onOpenStaffPortal,
   onBackToHome,
 }: LiveTrackerPageProps) {
-  const resolvedOrderId =
-    orderId || bookingInfo?.bookingId || 'ECE-842190';
+  const resolvedOrderId = (orderId || bookingInfo?.bookingId || '').trim();
 
   const [tracker, setTracker] = useState<TrackerApiRecord | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(Boolean(resolvedOrderId));
+  const [hasSearched, setHasSearched] = useState<boolean>(Boolean(resolvedOrderId));
   const [error, setError] = useState<string | null>(null);
   const [photoFailed, setPhotoFailed] = useState<boolean>(false);
   const [driverPhotoFailed, setDriverPhotoFailed] = useState<boolean>(false);
@@ -137,7 +138,11 @@ export function LiveTrackerPage({
   const [reviewSubmitted, setReviewSubmitted] = useState<boolean>(false);
 
   const fetchTracker = async (targetOrderId: string, silent = false) => {
+    const cleanId = targetOrderId.trim();
+    if (!cleanId) return;
+
     if (!silent) {
+      setHasSearched(true);
       setLoading(true);
       setError(null);
       setPhotoFailed(false);
@@ -145,18 +150,27 @@ export function LiveTrackerPage({
     }
     try {
       const response = await fetch(
-        `/api/get-tracker?order_id=${encodeURIComponent(targetOrderId)}`
+        `/api/get-tracker?order_id=${encodeURIComponent(cleanId)}`
       );
-      const data = await response.json();
-      if (!response.ok || !data.tracker) {
-        throw new Error(data.error || `Order ${targetOrderId} not found.`);
+      const rawText = await response.text();
+      const data = rawText ? JSON.parse(rawText) : null;
+
+      if (response.status === 404 || !data?.tracker) {
+        throw new Error(
+          'No booking found for that tracking number. Please check your Order ID and try again.'
+        );
+      }
+      if (!response.ok) {
+        throw new Error(data?.error || 'Unable to fetch live tracker data.');
       }
       setTracker(data.tracker as TrackerApiRecord);
     } catch (err) {
       if (!silent) {
         setTracker(null);
         setError(
-          err instanceof Error ? err.message : 'Unable to fetch live tracker data.'
+          err instanceof Error
+            ? err.message
+            : 'No booking found for that tracking number. Please check your Order ID and try again.'
         );
       }
     } finally {
@@ -173,7 +187,17 @@ export function LiveTrackerPage({
     setComment('');
     setReviewError(null);
     setReviewSubmitted(false);
-    fetchTracker(resolvedOrderId);
+    setCopiedLink(false);
+
+    if (resolvedOrderId) {
+      setHasSearched(true);
+      fetchTracker(resolvedOrderId);
+    } else {
+      setTracker(null);
+      setError(null);
+      setLoading(false);
+      setHasSearched(false);
+    }
   }, [resolvedOrderId]);
 
   const activeStatus = Math.min(6, Math.max(1, Number(tracker?.current_status ?? 1)));
@@ -192,9 +216,10 @@ export function LiveTrackerPage({
   const currentStage = TRACKER_STAGES[currentStageIndex];
 
   const handleShareLink = async () => {
+    if (!tracker) return;
     try {
       const shareUrl = `${window.location.origin}/track/${encodeURIComponent(
-        resolvedOrderId
+        tracker.order_id
       )}`;
       await navigator.clipboard.writeText(shareUrl);
       setCopiedLink(true);
@@ -251,23 +276,25 @@ export function LiveTrackerPage({
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={handleShareLink}
-              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
-            >
-              {copiedLink ? (
-                <>
-                  <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-                  <span className="text-emerald-700">Link Copied</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                  <span>Share Link</span>
-                </>
-              )}
-            </button>
+            {tracker && (
+              <button
+                type="button"
+                onClick={handleShareLink}
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+              >
+                {copiedLink ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                    <span className="text-emerald-700">Link Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                    <span>Share Link</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -277,6 +304,7 @@ export function LiveTrackerPage({
             e.preventDefault();
             const trimmed = lookupInput.trim();
             if (!trimmed) return;
+            setHasSearched(true);
             if (onSelectOrderId) {
               onSelectOrderId(trimmed);
             } else {
@@ -290,8 +318,8 @@ export function LiveTrackerPage({
             aria-label="Order ID lookup"
             value={lookupInput}
             onChange={(e) => setLookupInput(e.target.value)}
-            placeholder="Enter Order ID (e.g. ECE-842190)"
-            className="min-h-[44px] flex-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+            placeholder="Enter Tracking Number (e.g., ECE-1234)"
+            className="min-h-[44px] flex-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-xs text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
           />
           <button
             type="submit"
@@ -310,32 +338,32 @@ export function LiveTrackerPage({
                 aria-hidden="true"
               />
               <p className="mt-3 text-sm font-medium text-slate-700">
-                Loading live status for {resolvedOrderId}...
+                Loading live status for {resolvedOrderId || lookupInput.trim()}...
+              </p>
+            </div>
+          ) : !hasSearched && !tracker ? (
+            <div className="px-6 py-10 text-center sm:px-8">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700">
+                <Search className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <h1 className="mt-4 font-display text-lg font-semibold text-slate-900">
+                Live Escort Tracker
+              </h1>
+              <p className="mx-auto mt-1.5 max-w-sm text-sm leading-relaxed text-slate-600">
+                Enter your EcoCare Tracking Number above to view live escort progress, assigned companion, and driver details.
               </p>
             </div>
           ) : error || !tracker ? (
-            <div className="p-8 text-center">
-              <p className="font-display text-lg font-semibold text-slate-900">
-                Order not found
-              </p>
-              <p className="mt-1.5 text-sm text-slate-600">
-                {error || `We could not find an escort order matching "${resolvedOrderId}".`}
-              </p>
-              <div className="mt-5 flex justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onSelectOrderId) {
-                      onSelectOrderId('ECE-842190');
-                    } else {
-                      fetchTracker('ECE-842190');
-                    }
-                  }}
-                  className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-800"
-                >
-                  Load Sample Order (ECE-842190)
-                </button>
+            <div className="px-6 py-9 text-center sm:px-8">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500">
+                <Search className="h-5 w-5" aria-hidden="true" />
               </div>
+              <p className="mt-3 font-display text-base font-semibold text-slate-900">
+                Tracking number not found
+              </p>
+              <p role="status" className="mx-auto mt-1.5 max-w-sm text-sm text-slate-600">
+                {error || 'No booking found for that tracking number. Please check your Order ID and try again.'}
+              </p>
             </div>
           ) : (
             <>

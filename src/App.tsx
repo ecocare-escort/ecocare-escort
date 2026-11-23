@@ -25,6 +25,9 @@ interface RouteState {
 function parseRoute(): RouteState {
   const path = window.location.pathname.toLowerCase();
   const hash = window.location.hash.replace('#', '').toLowerCase();
+  const queryOrderId = new URLSearchParams(window.location.search)
+    .get('order_id')
+    ?.trim();
 
   if (path === '/admin' || hash === 'admin') {
     return { view: 'admin' };
@@ -34,17 +37,22 @@ function parseRoute(): RouteState {
   }
   if (path.startsWith('/track/')) {
     const id = decodeURIComponent(window.location.pathname.slice('/track/'.length)).trim();
-    return { view: 'tracker', orderId: id || 'ECE-842190' };
+    return { view: 'tracker', orderId: id || queryOrderId || undefined };
   }
   if (hash.startsWith('track/')) {
     const id = decodeURIComponent(window.location.hash.slice('#track/'.length)).trim();
-    return { view: 'tracker', orderId: id || 'ECE-842190' };
+    return { view: 'tracker', orderId: id || queryOrderId || undefined };
   }
   if (path === '/services' || hash === 'services') return { view: 'services' };
   if (path === '/book' || hash === 'book') return { view: 'book' };
   if (path === '/faq' || hash === 'faq') return { view: 'faq' };
-  if (path === '/tracker' || hash === 'tracker') {
-    return { view: 'tracker', orderId: 'ECE-842190' };
+  if (
+    path === '/track' ||
+    path === '/tracker' ||
+    hash === 'track' ||
+    hash === 'tracker'
+  ) {
+    return { view: 'tracker', orderId: queryOrderId || undefined };
   }
   return { view: 'home' };
 }
@@ -67,10 +75,12 @@ export default function App() {
 
   const navigateTo = (view: AppView, orderId?: string) => {
     setMobileMenuOpen(false);
-    const targetOrderId =
-      view === 'tracker'
-        ? orderId || trackedBooking?.bookingId || route.orderId || 'ECE-842190'
-        : undefined;
+    const trimmedOrderId = orderId?.trim() || undefined;
+    if (view === 'tracker' && !trimmedOrderId) {
+      setTrackedBooking(null);
+    }
+
+    const targetOrderId = view === 'tracker' ? trimmedOrderId : undefined;
 
     setRoute({ view, orderId: targetOrderId });
 
@@ -78,10 +88,12 @@ export default function App() {
       view === 'home'
         ? '/'
         : view === 'tracker'
-          ? `/track/${encodeURIComponent(targetOrderId || 'ECE-842190')}`
+          ? targetOrderId
+            ? `/track/${encodeURIComponent(targetOrderId)}`
+            : '/track'
           : `/${view}`;
 
-    if (window.location.pathname !== targetPath) {
+    if (window.location.pathname !== targetPath || window.location.search) {
       window.history.pushState(null, '', targetPath);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
