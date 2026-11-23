@@ -156,22 +156,58 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to submit booking. Please try again.');
+      const rawText = await response.text();
+      const contentType = response.headers.get('content-type') || '';
+      let data: {
+        ok?: boolean;
+        order_id?: string;
+        bookingId?: string;
+        addons?: { id: string; label: string; price: number }[];
+        totalPrice?: number;
+        whatsappMessage?: string;
+        storageTarget?: string;
+        error?: string;
+      } | null = null;
+
+      if (rawText) {
+        if (contentType.includes('application/json')) {
+          try {
+            data = JSON.parse(rawText);
+          } catch {
+            throw new Error(
+              'The booking service returned an invalid JSON response. Please try again.'
+            );
+          }
+        } else {
+          try {
+            data = JSON.parse(rawText);
+          } catch {
+            throw new Error(
+              `Booking request failed (${response.status}): ${rawText.trim().slice(0, 140) || 'Unexpected non-JSON response from server.'}`
+            );
+          }
+        }
+      }
+
+      if (!response.ok || !data) {
+        throw new Error(
+          data?.error ||
+            `Failed to submit booking (${response.status}). Please try again.`
+        );
       }
 
       const activeTierInfo =
         TIER_OPTIONS.find((t) => t.id === selectedTier) ?? TIER_OPTIONS[0];
+      const confirmedOrderId = data.order_id || data.bookingId || '';
 
       setConfirmation({
-        bookingId: data.bookingId,
+        bookingId: confirmedOrderId,
         patientName: patientOrCaregiverName.trim(),
         hospitalName: facilityName.trim(),
         tierLabel: `${activeTierInfo.name} - RM ${activeTierInfo.price}`,
         addons: data.addons || [],
         totalPrice: data.totalPrice ?? totalPrice,
-        whatsappMessage: data.whatsappMessage,
+        whatsappMessage: data.whatsappMessage || '',
         storageTarget: data.storageTarget || 'turso',
       });
       setCopiedWhatsapp(false);

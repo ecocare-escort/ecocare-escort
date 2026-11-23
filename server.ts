@@ -216,7 +216,18 @@ async function startServer() {
       const addonsTotal = addons.reduce((sum, item) => sum + item.price, 0);
       const totalPrice = basePrice + addonsTotal;
 
-      const bookingId = `ECE-${Math.floor(100000 + Math.random() * 900000)}`;
+      let bookingId = `ECE-${Math.floor(1000 + Math.random() * 9000)}`;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const candidate = `ECE-${Math.floor(1000 + Math.random() * 9000)}`;
+        const existing = await db.execute({
+          sql: 'SELECT order_id FROM orders WHERE UPPER(order_id) = UPPER(?) LIMIT 1',
+          args: [candidate],
+        });
+        if (existing.rows.length === 0) {
+          bookingId = candidate;
+          break;
+        }
+      }
       const createdAt = new Date().toISOString();
       const addonSummary =
         addons.length > 0
@@ -255,17 +266,18 @@ async function startServer() {
         ],
       });
 
-      // Automatically create a trackable order linked to an assigned companion
+      // Automatically create an unassigned pending order (status 1) for Employee Portal & Live Tracker
       await db.execute({
         sql: `
           INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
-          VALUES (?, ?, ?, ?, ?, 1, ?)
+          VALUES (?, ?, ?, ?, 'unassigned', 1, ?)
         `,
-        args: [bookingId, patientName, hospitalName, timeText, 'staff-mei-ling', createdAt],
+        args: [bookingId, patientName, hospitalName, timeText, createdAt],
       });
 
-      res.status(201).json({
+      res.status(200).json({
         ok: true,
+        order_id: bookingId,
         bookingId,
         totalPrice,
         addons,
