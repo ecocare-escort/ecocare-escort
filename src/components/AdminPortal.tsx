@@ -110,6 +110,7 @@ async function parseJsonSafe(response: Response) {
 
 export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) {
   const [passcodeInput, setPasscodeInput] = useState<string>('');
+  const [showAdminPasscode, setShowAdminPasscode] = useState<boolean>(false);
   const [verifiedPasscode, setVerifiedPasscode] = useState<string | null>(null);
   const [verifyingSession, setVerifyingSession] = useState<boolean>(true);
   const [authLoading, setAuthLoading] = useState<boolean>(false);
@@ -127,7 +128,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
   const [phone, setPhone] = useState<string>('');
   const [cprCertificateId, setCprCertificateId] = useState<string>('');
   const [loginId, setLoginId] = useState<string>('');
-  const [staffPasscode, setStaffPasscode] = useState<string>('123456');
+  const [staffPasscode, setStaffPasscode] = useState<string>('');
   const [showAddPasscode, setShowAddPasscode] = useState<boolean>(false);
   const [photoUrl, setPhotoUrl] = useState<string>('');
   const [addPreviewFailed, setAddPreviewFailed] = useState<boolean>(false);
@@ -427,7 +428,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
       setPhone('');
       setCprCertificateId('');
       setLoginId('');
-      setStaffPasscode('123456');
+      setStaffPasscode('');
       setPhotoUrl('');
       setAddPreviewFailed(false);
       setIsDriver(false);
@@ -713,24 +714,32 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                 >
                   Admin Passcode
                 </label>
-                <input
-                  id="admin-passcode"
-                  type="password"
-                  autoComplete="current-password"
-                  value={passcodeInput}
-                  onChange={(e) => {
-                    setPasscodeInput(e.target.value);
-                    if (authError) setAuthError(null);
-                  }}
-                  placeholder="Enter admin passcode"
-                  className="mt-1.5 min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                />
-                <p className="mt-2 text-xs text-slate-500">
-                  Demo passcode for MVP testing:{' '}
-                  <span className="font-mono font-medium text-slate-700">
-                    ecocare2026
-                  </span>
-                </p>
+                <div className="relative mt-1.5">
+                  <input
+                    id="admin-passcode"
+                    type={showAdminPasscode ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={passcodeInput}
+                    onChange={(e) => {
+                      setPasscodeInput(e.target.value);
+                      if (authError) setAuthError(null);
+                    }}
+                    placeholder="Enter admin passcode"
+                    className="min-h-[48px] w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-3.5 pr-11 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  />
+                  <button
+                    type="button"
+                    aria-label={showAdminPasscode ? 'Hide admin passcode' : 'Show admin passcode'}
+                    onClick={() => setShowAdminPasscode((prev) => !prev)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-slate-400 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                  >
+                    {showAdminPasscode ? (
+                      <EyeOff className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-4 w-4" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <button
@@ -1099,7 +1108,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                           type={showAddPasscode ? 'text' : 'password'}
                           value={staffPasscode}
                           onChange={(e) => setStaffPasscode(e.target.value)}
-                          placeholder="123456"
+                          placeholder="Enter portal passcode"
                           className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-10 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                         />
                         <button

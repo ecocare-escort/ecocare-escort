@@ -18,46 +18,43 @@ export default async function handler(req, res) {
     }
     const body = rawBody || {};
 
-    const loginId = String(body.login_id ?? body.username ?? '').trim().toLowerCase();
-    const staffId = String(body.staff_id ?? '').trim();
+    const loginId = String(body.login_id ?? body.username ?? '').trim();
     const passcode = String(body.passcode ?? body.password ?? '').trim();
 
-    if ((!loginId && !staffId) || !passcode) {
+    if (!loginId || !passcode) {
       return res.status(400).json({
-        error: 'Please enter your Login ID and Passcode.',
+        error: 'Please enter your Login ID and passcode.',
       });
     }
 
-    const result = staffId
-      ? await db.execute({
-          sql: `
-            SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode
-            FROM staff
-            WHERE id = ? AND id != 'unassigned'
-            LIMIT 1
-          `,
-          args: [staffId],
-        })
-      : await db.execute({
-          sql: `
-            SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode
-            FROM staff
-            WHERE LOWER(login_id) = LOWER(?) AND id != 'unassigned'
-            LIMIT 1
-          `,
-          args: [loginId],
-        });
+    const result = await db.execute({
+      sql: `
+        SELECT
+          id,
+          name,
+          role,
+          phone,
+          photo_url,
+          cpr_certificate_id,
+          login_id,
+          COALESCE(is_driver, 0) AS is_driver,
+          vehicle_model,
+          vehicle_color,
+          vehicle_plate
+        FROM staff
+        WHERE LOWER(login_id) = LOWER(?)
+          AND passcode = ?
+          AND id != 'unassigned'
+        LIMIT 1
+      `,
+      args: [loginId, passcode],
+    });
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid Staff Login ID or Passcode.' });
+      return res.status(401).json({ error: 'Invalid Login ID or passcode.' });
     }
 
     const staff = result.rows[0];
-    const storedPasscode = String(staff.passcode || '123456').trim();
-
-    if (passcode !== storedPasscode) {
-      return res.status(401).json({ error: 'Invalid Staff Login ID or Passcode.' });
-    }
 
     return res.status(200).json({
       ok: true,
@@ -69,6 +66,10 @@ export default async function handler(req, res) {
         photo_url: staff.photo_url,
         cpr_certificate_id: staff.cpr_certificate_id,
         login_id: staff.login_id,
+        is_driver: Number(staff.is_driver || 0),
+        vehicle_model: staff.vehicle_model ?? null,
+        vehicle_color: staff.vehicle_color ?? null,
+        vehicle_plate: staff.vehicle_plate ?? null,
       },
     });
   } catch (error) {
