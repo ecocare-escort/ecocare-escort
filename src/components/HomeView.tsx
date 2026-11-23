@@ -1,10 +1,14 @@
-import { ArrowRight, Check, HeartHandshake, ShieldCheck, MessageSquare } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowRight, Check, Film, HeartHandshake, MessageSquare, Play, ShieldCheck } from 'lucide-react';
 import heroEscortImg from '../assets/images/hero_ecocare_escort_1794552794861.jpg';
 import bentoHandoffImg from '../assets/images/bento_clinic_handoff_1794552796556.jpg';
 import companionPortraitImg from '../assets/images/care_companion_portrait_1794552796355.jpg';
 import { HERO_HIGHLIGHTS } from '../data/ecocareData';
 import { ResilientImage } from './ResilientImage';
 import { CustomerReviews } from './CustomerReviews';
+
+// Paste a YouTube/Vimeo embed URL or local video path (e.g. "/promo-video.mp4") here once filming is complete.
+const PROMO_VIDEO_URL = '';
 
 export type AppView = 'home' | 'about' | 'services' | 'book' | 'tracker' | 'faq' | 'portal' | 'admin';
 
@@ -13,6 +17,9 @@ interface HomeViewProps {
 }
 
 export function HomeView({ onNavigate }: HomeViewProps) {
+  const [showComingSoonNote, setShowComingSoonNote] = useState(false);
+  const trimmedVideoUrl = PROMO_VIDEO_URL.trim();
+  const isEmbedVideo = /youtube\.com|youtu\.be|vimeo\.com/i.test(trimmedVideoUrl);
   return (
     <>
       {/* Hero Section */}
@@ -199,9 +206,95 @@ export function HomeView({ onNavigate }: HomeViewProps) {
               </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          {/* Bottom Home Action Callout */}
-          <div className="mt-10 flex flex-col items-start justify-between gap-6 rounded-xl border border-slate-200 bg-white p-7 sm:flex-row sm:items-center">
+      {/* Promotional Video Showcase Section: See EcoCare in Action / Our Story */}
+      <section className="border-y border-slate-200 bg-white py-16 md:py-20">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs font-medium tracking-wide text-emerald-700">
+                Our Story
+              </p>
+              <h2 className="mt-2 font-display text-3xl font-semibold tracking-tight text-slate-900 text-balance">
+                See EcoCare in Action
+              </h2>
+            </div>
+            <p className="max-w-md text-sm leading-relaxed text-slate-600">
+              Watch how our CPR-trained companions care for your parents from doorstep to clinic and back home.
+            </p>
+          </div>
+
+          <div className="mt-8 aspect-video w-full overflow-hidden rounded-2xl border border-slate-200 bg-emerald-950 shadow-lg">
+            {trimmedVideoUrl ? (
+              isEmbedVideo ? (
+                <iframe
+                  src={trimmedVideoUrl}
+                  title="EcoCare Escorts Promotional Brand Film"
+                  className="h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  src={trimmedVideoUrl}
+                  controls
+                  playsInline
+                  className="h-full w-full object-cover"
+                />
+              )
+            ) : (
+              <div className="relative flex h-full w-full flex-col items-center justify-center p-6 text-center">
+                <img
+                  src="/team-photo.jpg"
+                  alt="EcoCare Escorts 6-member founding team at the Serdang Operations Hub"
+                  referrerPolicy="no-referrer"
+                  className="absolute inset-0 h-full w-full object-cover opacity-30"
+                />
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-0 bg-gradient-to-br from-emerald-950/90 via-slate-900/75 to-emerald-950/90"
+                />
+
+                <div className="relative z-10 flex max-w-xl flex-col items-center">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/35 bg-emerald-900/70 px-3.5 py-1 text-xs font-semibold text-emerald-100 backdrop-blur-sm">
+                    <Film className="h-3.5 w-3.5 text-emerald-300" aria-hidden="true" />
+                    <span>Official Brand Film · Coming Soon (75s)</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    aria-label="Preview EcoCare brand film status"
+                    onClick={() => setShowComingSoonNote((prev) => !prev)}
+                    className="mt-5 inline-flex h-16 w-16 items-center justify-center rounded-full border border-white/30 bg-emerald-600/90 text-white shadow-lg transition-transform hover:scale-105 hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 sm:h-20 sm:w-20"
+                  >
+                    <Play className="ml-1 h-7 w-7 fill-current sm:h-8 sm:w-8" aria-hidden="true" />
+                  </button>
+
+                  <p className="mt-5 text-sm leading-relaxed text-slate-100 sm:text-base">
+                    Watch how our CPR-trained companions care for your parents from doorstep to clinic and back home.
+                  </p>
+
+                  {showComingSoonNote && (
+                    <p
+                      role="status"
+                      className="mt-4 rounded-lg border border-emerald-400/30 bg-slate-950/80 px-4 py-2 text-xs text-emerald-200"
+                    >
+                      Our 75-second brand film is currently in production at our Serdang Operations Hub. Launching soon.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing & Booking Callout Section */}
+      <section className="py-12 md:py-16">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="flex flex-col items-start justify-between gap-6 rounded-xl border border-slate-200 bg-white p-7 sm:flex-row sm:items-center">
             <div>
               <h3 className="font-display text-xl font-semibold text-slate-900">
                 Ready to arrange your parent’s next hospital visit?

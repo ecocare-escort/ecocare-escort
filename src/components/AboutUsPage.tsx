@@ -193,6 +193,30 @@ export function AboutUsPage({ onNavigate }: AboutUsPageProps) {
         </div>
       </section>
 
+      {/* Featured 6-Member Founding Team Photo Banner */}
+      <section className="border-b border-slate-200 bg-slate-50 py-10 md:py-14">
+        <div className="mx-auto max-w-6xl px-6">
+          <figure className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
+            <div className="aspect-[16/9] w-full overflow-hidden bg-slate-100">
+              <img
+                src="/team-photo.jpg"
+                alt="The 6-member EcoCare Escorts founding team standing and kneeling in front of the EcoCare logo wall at the Serdang Operations Hub"
+                referrerPolicy="no-referrer"
+                className="h-full w-full object-cover object-center"
+              />
+            </div>
+            <figcaption className="flex flex-col gap-1 border-t border-slate-200 bg-white px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-sm font-semibold text-slate-800">
+                The 6-Member Founding Team at our Serdang Operations Hub — EcoCare Escorts.
+              </span>
+              <span className="text-xs font-medium text-emerald-700">
+                Seri Kembangan · Greater Klang Valley
+              </span>
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
       {/* 2. Company Address & Operations Hub */}
       <section className="border-b border-slate-200 py-14 md:py-16">
         <div className="mx-auto max-w-6xl px-6">
