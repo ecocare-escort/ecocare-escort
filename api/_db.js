@@ -88,6 +88,7 @@ export async function ensureSchemaAndSeed() {
           staff_id TEXT NOT NULL,
           driver_id TEXT,
           current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 6),
+          is_b40 INTEGER DEFAULT 0,
           updated_at TEXT NOT NULL,
           completed_at TEXT,
           FOREIGN KEY (staff_id) REFERENCES staff(id)
@@ -108,6 +109,7 @@ export async function ensureSchemaAndSeed() {
           pickup_zone TEXT DEFAULT 'serdang',
           distance_km INTEGER DEFAULT 0,
           mileage_fee INTEGER DEFAULT 0,
+          is_b40 INTEGER DEFAULT 0,
           total_price INTEGER NOT NULL,
           appointment_date TEXT,
           pickup_time TEXT,
@@ -141,6 +143,7 @@ export async function ensureSchemaAndSeed() {
         `ALTER TABLE orders ADD COLUMN pickup_time TEXT`,
         `ALTER TABLE orders ADD COLUMN completed_at TEXT`,
         `ALTER TABLE orders ADD COLUMN driver_id TEXT`,
+        `ALTER TABLE orders ADD COLUMN is_b40 INTEGER DEFAULT 0`,
       ];
       for (const sql of orderAlterStatements) {
         try {
@@ -154,6 +157,7 @@ export async function ensureSchemaAndSeed() {
         `ALTER TABLE bookings ADD COLUMN pickup_zone TEXT DEFAULT 'serdang'`,
         `ALTER TABLE bookings ADD COLUMN distance_km INTEGER DEFAULT 0`,
         `ALTER TABLE bookings ADD COLUMN mileage_fee INTEGER DEFAULT 0`,
+        `ALTER TABLE bookings ADD COLUMN is_b40 INTEGER DEFAULT 0`,
       ];
       for (const sql of bookingAlterStatements) {
         try {

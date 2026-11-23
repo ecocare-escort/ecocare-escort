@@ -86,6 +86,7 @@ async function ensureSchemaAndSeed() {
       staff_id TEXT NOT NULL,
       driver_id TEXT,
       current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 6),
+      is_b40 INTEGER DEFAULT 0,
       updated_at TEXT NOT NULL,
       completed_at TEXT,
       FOREIGN KEY (staff_id) REFERENCES staff(id)
@@ -168,6 +169,12 @@ async function ensureSchemaAndSeed() {
     // Column already exists
   }
 
+  try {
+    await db.execute(`ALTER TABLE orders ADD COLUMN is_b40 INTEGER DEFAULT 0`);
+  } catch {
+    // Column already exists
+  }
+
   // Safely widen legacy CHECK (current_status BETWEEN 1 AND 5) constraint to 1..6
   const ordersTableInfo = await db.execute(
     `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'`
@@ -212,6 +219,7 @@ async function ensureSchemaAndSeed() {
       pickup_zone TEXT DEFAULT 'serdang',
       distance_km INTEGER DEFAULT 0,
       mileage_fee INTEGER DEFAULT 0,
+      is_b40 INTEGER DEFAULT 0,
       total_price INTEGER NOT NULL,
       appointment_date TEXT,
       pickup_time TEXT,
@@ -225,6 +233,7 @@ async function ensureSchemaAndSeed() {
     `ALTER TABLE bookings ADD COLUMN pickup_zone TEXT DEFAULT 'serdang'`,
     `ALTER TABLE bookings ADD COLUMN distance_km INTEGER DEFAULT 0`,
     `ALTER TABLE bookings ADD COLUMN mileage_fee INTEGER DEFAULT 0`,
+    `ALTER TABLE bookings ADD COLUMN is_b40 INTEGER DEFAULT 0`,
   ]) {
     try {
       await db.execute(sql);
@@ -397,6 +406,8 @@ interface BookingPayload {
   email?: string;
   phone?: string;
   tierId?: 'tier1' | 'tier2';
+  is_b40?: boolean;
+  isB40?: boolean;
   needsWheelchair?: boolean;
   needsFastingMeal?: boolean;
   pickupZone?: 'serdang' | 'other';
@@ -417,7 +428,8 @@ async function startServer() {
       const body = (req.body || {}) as BookingPayload;
       const patientName = (body.patientName || '').trim();
       const hospitalName = (body.hospitalName || '').trim();
-      const tierId = body.tierId === 'tier2' ? 'tier2' : 'tier1';
+      const isB40 = Boolean(body.is_b40 ?? body.isB40);
+      const tierId = isB40 ? 'tier2' : body.tierId === 'tier2' ? 'tier2' : 'tier1';
       const needsWheelchair = Boolean(body.needsWheelchair);
       const needsFastingMeal = Boolean(body.needsFastingMeal);
 
@@ -438,9 +450,10 @@ async function startServer() {
         return;
       }
 
-      const basePrice = tierId === 'tier2' ? 200 : 150;
-      const tierLabel =
-        tierId === 'tier2'
+      const basePrice = isB40 ? 150 : tierId === 'tier2' ? 200 : 150;
+      const tierLabel = isB40
+        ? 'Premium Proxy Package - RM 150 (B40 Inclusive Care)'
+        : tierId === 'tier2'
           ? 'Premium Proxy Package - RM 200'
           : 'Basic Care Package - RM 150';
 
@@ -469,16 +482,19 @@ async function startServer() {
 
       const dateText = body.appointmentDate || 'TBD';
       const timeText = body.pickupTime || 'TBD';
+      const b40WhatsAppSegment = isB40
+        ? ' | B40 Inclusive Care: Yes (Premium Package @ RM 150 — I will attach my STR verification screenshot here)'
+        : '';
 
-      const whatsappMessage = `[EcoCare Escorts Booking Confirmation] Order ${bookingId} | Name: ${patientName} | Hospital: ${hospitalName} | Schedule: ${dateText} at ${timeText} | Package: ${tierLabel} | Add-ons: ${addonSummary} | Mileage: ${mileageSummary} | Total Price: RM ${totalPrice}. Our Serdang student care team will confirm your companion details via WhatsApp (+60 12-345 6789) within 30 minutes.`;
+      const whatsappMessage = `[EcoCare Escorts Booking Confirmation] Order ${bookingId} | Name: ${patientName} | Hospital: ${hospitalName} | Schedule: ${dateText} at ${timeText} | Package: ${tierLabel}${b40WhatsAppSegment} | Add-ons: ${addonSummary} | Mileage: ${mileageSummary} | Total Price: RM ${totalPrice}. Our Serdang student care team will confirm your companion details via WhatsApp (+60 12-345 6789) within 30 minutes.`;
 
       await db.execute({
         sql: `
           INSERT INTO bookings (
             id, patient_name, hospital_name, email, phone,
-            tier_id, tier_label, base_price, addons_json, pickup_zone, distance_km, mileage_fee, total_price,
+            tier_id, tier_label, base_price, addons_json, pickup_zone, distance_km, mileage_fee, is_b40, total_price,
             appointment_date, pickup_time, notes, whatsapp_message, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           bookingId,
@@ -493,6 +509,7 @@ async function startServer() {
           pickupZone,
           distanceKm,
           mileageFee,
+          isB40 ? 1 : 0,
           totalPrice,
           dateText,
           timeText,
@@ -507,10 +524,10 @@ async function startServer() {
       // Automatically create an unassigned pending order (status 1) with auto-dispatched driver for Employee Portal & Live Tracker
       await db.execute({
         sql: `
-          INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, driver_id, current_status, updated_at)
-          VALUES (?, ?, ?, ?, 'unassigned', ?, 1, ?)
+          INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, driver_id, current_status, is_b40, updated_at)
+          VALUES (?, ?, ?, ?, 'unassigned', ?, 1, ?, ?)
         `,
-        args: [bookingId, patientName, hospitalName, timeText, assignedDriverId, createdAt],
+        args: [bookingId, patientName, hospitalName, timeText, assignedDriverId, isB40 ? 1 : 0, createdAt],
       });
 
       res.status(200).json({
@@ -518,6 +535,9 @@ async function startServer() {
         order_id: bookingId,
         bookingId,
         driver_id: assignedDriverId,
+        is_b40: isB40 ? 1 : 0,
+        tierId,
+        tierLabel,
         basePrice,
         addonsTotal,
         pickupZone,
@@ -541,7 +561,7 @@ async function startServer() {
   app.get('/api/bookings', async (_req: Request, res: Response) => {
     try {
       const result = await db.execute(
-        'SELECT id, patient_name, hospital_name, tier_id, addons_json, pickup_zone, distance_km, mileage_fee, total_price, appointment_date, pickup_time, created_at FROM bookings ORDER BY created_at DESC LIMIT 20'
+        'SELECT id, patient_name, hospital_name, tier_id, addons_json, pickup_zone, distance_km, mileage_fee, COALESCE(is_b40, 0) AS is_b40, total_price, appointment_date, pickup_time, created_at FROM bookings ORDER BY created_at DESC LIMIT 20'
       );
       res.json({ bookings: result.rows });
     } catch (error) {
@@ -1347,6 +1367,7 @@ async function startServer() {
           o.staff_id,
           o.driver_id,
           o.current_status,
+          COALESCE(o.is_b40, 0) AS is_b40,
           o.updated_at,
           o.completed_at,
           CASE WHEN o.staff_id = 'unassigned' OR c.id IS NULL THEN NULL ELSE c.name END AS companion_name,

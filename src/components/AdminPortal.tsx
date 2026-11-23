@@ -47,6 +47,7 @@ interface OrderMonitorRecord {
   staff_id: string;
   driver_id: string | null;
   current_status: number;
+  is_b40?: number;
   updated_at: string;
   completed_at: string | null;
   companion_name: string | null;
@@ -1551,6 +1552,11 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                                 <span className="truncate font-display text-sm font-semibold text-slate-800">
                                   {order.client_name}
                                 </span>
+                                {Number(order.is_b40) === 1 && (
+                                  <span className="inline-flex items-center rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 whitespace-nowrap shrink-0">
+                                    B40 · Verify STR
+                                  </span>
+                                )}
                               </div>
                               <p className="mt-0.5 truncate text-xs text-slate-600">
                                 {order.hospital_name || 'Klang Valley Hospital'}

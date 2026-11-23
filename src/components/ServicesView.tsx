@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Check, Clock, MapPin, Navigation } from 'lucide-react';
+import { ArrowRight, Check, Clock, HeartHandshake, MapPin, Navigation } from 'lucide-react';
 import {
   ADDON_ITEMS,
   JOURNEY_PHASES,
@@ -9,7 +9,7 @@ import {
 import type { PricingTier } from './BookingSection';
 
 interface ServicesViewProps {
-  onSelectPackage: (tierId: PricingTier) => void;
+  onSelectPackage: (tierId: PricingTier, isB40?: boolean) => void;
   onGoToBooking: () => void;
 }
 
@@ -216,6 +216,37 @@ export function ServicesView({
                   +RM 30 / hour
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* B40 Inclusive Care (UN SDG 10) Callout Banner */}
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-6 md:p-7">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700">
+                  <HeartHandshake className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <h3 className="font-display text-base font-bold text-slate-900 md:text-lg">
+                    B40 Inclusive Care Program (UN SDG 10 · Reduced Inequalities)
+                  </h3>
+                  <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-slate-700">
+                    Eligible B40 families receive our full Premium Proxy Package (in-room accompaniment, medical summary &amp; live photo updates) at the Basic rate of <span className="font-semibold text-emerald-900">RM 150</span> (save RM 50). Additionally, every 10 commercial bookings fund 1 completely free escort for an underprivileged B40 senior.
+                  </p>
+                  <p className="mt-2 text-xs font-medium text-emerald-800">
+                    Simple verification via STR (Sumbangan Tunai Rahmah) status screenshot on WhatsApp.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onSelectPackage('tier2', true)}
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 self-start rounded-lg bg-emerald-700 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-800 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 lg:self-center"
+              >
+                <span>Apply B40 Rate (RM 150)</span>
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
             </div>
           </div>
         </div>

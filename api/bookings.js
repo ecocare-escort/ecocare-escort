@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
       const result = await db.execute(
-        'SELECT id, patient_name, hospital_name, tier_id, addons_json, pickup_zone, distance_km, mileage_fee, total_price, appointment_date, pickup_time, created_at FROM bookings ORDER BY created_at DESC LIMIT 20'
+        'SELECT id, patient_name, hospital_name, tier_id, addons_json, pickup_zone, distance_km, mileage_fee, COALESCE(is_b40, 0) AS is_b40, total_price, appointment_date, pickup_time, created_at FROM bookings ORDER BY created_at DESC LIMIT 20'
       );
       return res.status(200).json({ ok: true, bookings: result.rows });
     }
@@ -36,7 +36,8 @@ export default async function handler(req, res) {
     const email = String(body.email ?? '').trim();
     const phone = String(body.phone ?? '').trim();
     const rawTier = String(body.tierId ?? body.tier_id ?? body.package ?? 'tier1').trim().toLowerCase();
-    const tierId = rawTier === 'tier2' ? 'tier2' : 'tier1';
+    const isB40 = Boolean(body.is_b40 ?? body.isB40);
+    const tierId = isB40 ? 'tier2' : rawTier === 'tier2' ? 'tier2' : 'tier1';
     const needsWheelchair = Boolean(body.needsWheelchair ?? body.needs_wheelchair);
     const needsFastingMeal = Boolean(body.needsFastingMeal ?? body.needs_fasting_meal);
 
@@ -56,9 +57,10 @@ export default async function handler(req, res) {
       });
     }
 
-    const basePrice = tierId === 'tier2' ? 200 : 150;
-    const tierLabel =
-      tierId === 'tier2'
+    const basePrice = isB40 ? 150 : tierId === 'tier2' ? 200 : 150;
+    const tierLabel = isB40
+      ? 'Premium Proxy Package - RM 150 (B40 Inclusive Care)'
+      : tierId === 'tier2'
         ? 'Premium Proxy Package - RM 200'
         : 'Basic Care Package - RM 150';
 
@@ -88,16 +90,19 @@ export default async function handler(req, res) {
     const dateText = String(body.appointmentDate ?? body.appointment_date ?? '').trim() || 'TBD';
     const timeText = String(body.pickupTime ?? body.pickup_time ?? '').trim() || 'TBD';
     const notesText = String(body.notes ?? '').trim();
+    const b40WhatsAppSegment = isB40
+      ? ' | B40 Inclusive Care: Yes (Premium Package @ RM 150 — I will attach my STR verification screenshot here)'
+      : '';
 
-    const whatsappMessage = `[EcoCare Escorts Booking Confirmation] Order ${orderId} | Name: ${patientName} | Hospital: ${hospitalName} | Schedule: ${dateText} at ${timeText} | Package: ${tierLabel} | Add-ons: ${addonSummary} | Mileage: ${mileageSummary} | Total Price: RM ${totalPrice}. Our Serdang student care team will confirm your companion details via WhatsApp (+60 12-345 6789) within 30 minutes.`;
+    const whatsappMessage = `[EcoCare Escorts Booking Confirmation] Order ${orderId} | Name: ${patientName} | Hospital: ${hospitalName} | Schedule: ${dateText} at ${timeText} | Package: ${tierLabel}${b40WhatsAppSegment} | Add-ons: ${addonSummary} | Mileage: ${mileageSummary} | Total Price: RM ${totalPrice}. Our Serdang student care team will confirm your companion details via WhatsApp (+60 12-345 6789) within 30 minutes.`;
 
     await db.execute({
       sql: `
         INSERT INTO bookings (
           id, patient_name, hospital_name, email, phone,
-          tier_id, tier_label, base_price, addons_json, pickup_zone, distance_km, mileage_fee, total_price,
+          tier_id, tier_label, base_price, addons_json, pickup_zone, distance_km, mileage_fee, is_b40, total_price,
           appointment_date, pickup_time, notes, whatsapp_message, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
         orderId,
@@ -112,6 +117,7 @@ export default async function handler(req, res) {
         pickupZone,
         distanceKm,
         mileageFee,
+        isB40 ? 1 : 0,
         totalPrice,
         dateText,
         timeText,
@@ -126,10 +132,10 @@ export default async function handler(req, res) {
     // Insert as an unassigned pending order (status 1) with auto-dispatched driver so staff can claim it in /portal and clients can track it
     await db.execute({
       sql: `
-        INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, driver_id, current_status, updated_at)
-        VALUES (?, ?, ?, ?, 'unassigned', ?, 1, ?)
+        INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, driver_id, current_status, is_b40, updated_at)
+        VALUES (?, ?, ?, ?, 'unassigned', ?, 1, ?, ?)
       `,
-      args: [orderId, patientName, hospitalName, timeText, assignedDriverId, createdAt],
+      args: [orderId, patientName, hospitalName, timeText, assignedDriverId, isB40 ? 1 : 0, createdAt],
     });
 
     return res.status(200).json({
@@ -137,6 +143,9 @@ export default async function handler(req, res) {
       order_id: orderId,
       bookingId: orderId,
       driver_id: assignedDriverId,
+      is_b40: isB40 ? 1 : 0,
+      tierId,
+      tierLabel,
       basePrice,
       addonsTotal,
       pickupZone,

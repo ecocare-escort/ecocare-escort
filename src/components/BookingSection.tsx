@@ -4,6 +4,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  HeartHandshake,
   Mail,
   MapPin,
   MessageSquare,
@@ -15,6 +16,7 @@ export type PricingTier = 'tier1' | 'tier2';
 
 export interface BookingPrefill {
   tierId: PricingTier;
+  isB40?: boolean;
 }
 
 interface BookingSectionProps {
@@ -92,6 +94,7 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
 
   // Dynamic pricing React States (useState)
   const [selectedTier, setSelectedTier] = useState<PricingTier>('tier1');
+  const [isB40, setIsB40] = useState<boolean>(false);
   const [needsWheelchair, setNeedsWheelchair] = useState<boolean>(false);
   const [needsFastingMeal, setNeedsFastingMeal] = useState<boolean>(false);
   const [pickupZone, setPickupZone] = useState<PickupZone>('serdang');
@@ -113,13 +116,27 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
 
   useEffect(() => {
     if (!prefill) return;
-    setSelectedTier(prefill.tierId);
+    if (prefill.isB40) {
+      setIsB40(true);
+      setSelectedTier('tier2');
+    } else {
+      setIsB40(false);
+      setSelectedTier(prefill.tierId);
+    }
   }, [prefill]);
 
-  // Real-time Total Price calculation (Option A: RM 150 / RM 200 + mileage beyond 10 km)
+  const handleToggleB40 = (checked: boolean) => {
+    setIsB40(checked);
+    if (checked) {
+      setSelectedTier('tier2');
+    }
+  };
+
+  // Real-time Total Price calculation (Option A: RM 150 / RM 200; B40 Subsidized Premium = RM 150 + mileage beyond 10 km)
+  const effectiveTierId: PricingTier = isB40 ? 'tier2' : selectedTier;
   const activeTierInfo =
-    TIER_OPTIONS.find((t) => t.id === selectedTier) ?? TIER_OPTIONS[0];
-  const basePrice = activeTierInfo.price;
+    TIER_OPTIONS.find((t) => t.id === effectiveTierId) ?? TIER_OPTIONS[0];
+  const basePrice = isB40 ? 150 : activeTierInfo.price;
   const wheelchairAddon = needsWheelchair ? WHEELCHAIR_FEE : 0;
   const fastingMealAddon = needsFastingMeal ? FASTING_MEAL_FEE : 0;
   const parsedDistance = Number(distanceInput);
@@ -174,7 +191,8 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
           hospitalName: facilityName.trim(),
           email: email.trim(),
           phone: phone.trim(),
-          tierId: selectedTier,
+          tierId: effectiveTierId,
+          is_b40: isB40,
           needsWheelchair,
           needsFastingMeal,
           pickupZone,
@@ -234,7 +252,9 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
         bookingId: confirmedOrderId,
         patientName: patientOrCaregiverName.trim(),
         hospitalName: facilityName.trim(),
-        tierLabel: `${activeTierInfo.name} — RM ${activeTierInfo.price}`,
+        tierLabel: isB40
+          ? `${activeTierInfo.name} — RM 150 (B40 Inclusive Care)`
+          : `${activeTierInfo.name} — RM ${activeTierInfo.price}`,
         addons: data.addons || [],
         pickupZone: data.pickupZone || pickupZone,
         distanceKm: data.distanceKm ?? effectiveDistanceKm,
@@ -432,26 +452,48 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                     className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2"
                   >
                     {TIER_OPTIONS.map((tier) => {
-                      const isSelected = selectedTier === tier.id;
+                      const isSelected = effectiveTierId === tier.id;
+                      const isB40Premium = isB40 && tier.id === 'tier2';
                       return (
                         <button
                           key={tier.id}
                           type="button"
                           role="radio"
                           aria-checked={isSelected}
-                          onClick={() => setSelectedTier(tier.id)}
+                          onClick={() => {
+                            if (tier.id === 'tier1' && isB40) {
+                              setIsB40(false);
+                            }
+                            setSelectedTier(tier.id);
+                          }}
                           className={`flex flex-col justify-between rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
                             isSelected
                               ? 'border-emerald-700 bg-emerald-50/80 text-slate-900'
                               : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                           }`}
                         >
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="font-display text-sm font-semibold text-slate-900">
-                              {tier.name} — RM {tier.price}
-                            </span>
-                            <span className="font-mono text-base font-semibold tabular-nums text-emerald-700 shrink-0">
-                              RM {tier.price}
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="font-display text-sm font-semibold text-slate-900">
+                                {tier.name} — RM {isB40Premium ? 150 : tier.price}
+                              </span>
+                              {isB40Premium && (
+                                <span className="mt-1 inline-flex items-center rounded border border-emerald-200 bg-emerald-100/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                                  B40 Subsidized · -RM 50
+                                </span>
+                              )}
+                            </div>
+                            <span className="font-mono text-base font-semibold tabular-nums text-emerald-700 shrink-0 text-right">
+                              {isB40Premium ? (
+                                <span className="flex flex-col items-end">
+                                  <span className="text-xs font-normal text-slate-400 line-through">
+                                    RM {tier.price}
+                                  </span>
+                                  <span>RM 150</span>
+                                </span>
+                              ) : (
+                                <>RM {tier.price}</>
+                              )}
                             </span>
                           </div>
                           <span className="mt-1.5 text-xs leading-relaxed text-slate-600">
@@ -461,6 +503,41 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                       );
                     })}
                   </div>
+
+                  {/* B40 Inclusive Care Toggle / Checkbox Card */}
+                  <label
+                    className={`mt-3 flex cursor-pointer items-start justify-between gap-4 rounded-lg border p-4 transition-colors ${
+                      isB40
+                        ? 'border-emerald-700 bg-emerald-50/80'
+                        : 'border-emerald-200/80 bg-white hover:border-emerald-400'
+                    }`}
+                  >
+                    <span className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={isB40}
+                        onChange={(e) => handleToggleB40(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-700"
+                      />
+                      <span>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <HeartHandshake
+                            className="h-4 w-4 shrink-0 text-emerald-700"
+                            aria-hidden="true"
+                          />
+                          <span className="font-display text-sm font-semibold text-slate-900">
+                            Apply B40 Inclusive Care Rate (Save RM 50)
+                          </span>
+                        </span>
+                        <span className="mt-1 block text-xs leading-relaxed text-slate-600">
+                          Enjoy full Premium Proxy service for RM 150. You will be asked to share your STR (Sumbangan Tunai Rahmah) screenshot via WhatsApp for quick verification.
+                        </span>
+                      </span>
+                    </span>
+                    <span className="font-mono text-xs font-semibold tabular-nums text-emerald-700 shrink-0">
+                      -RM 50
+                    </span>
+                  </label>
                 </div>
 
                 {/* Patient & Hospital Fields */}
@@ -826,14 +903,33 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                   </div>
 
                   <dl className="mt-3 space-y-2 text-xs">
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-slate-600">
-                        Base Package ({activeTierInfo.name})
-                      </dt>
-                      <dd className="font-mono font-semibold tabular-nums text-slate-900">
-                        RM {basePrice}
-                      </dd>
-                    </div>
+                    {isB40 ? (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <dt className="text-slate-600">Premium Proxy Package</dt>
+                          <dd className="font-mono font-semibold tabular-nums text-slate-900">
+                            RM 200
+                          </dd>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <dt className="font-medium text-emerald-800">
+                            B40 Inclusive Care Subsidy (UN SDG 10)
+                          </dt>
+                          <dd className="font-mono font-semibold tabular-nums text-emerald-700">
+                            -RM 50
+                          </dd>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3">
+                        <dt className="text-slate-600">
+                          Base Package ({activeTierInfo.name})
+                        </dt>
+                        <dd className="font-mono font-semibold tabular-nums text-slate-900">
+                          RM {basePrice}
+                        </dd>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between gap-3">
                       <dt className="text-slate-600">Selected Add-ons</dt>
@@ -868,6 +964,12 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                       </dd>
                     </div>
                   </dl>
+
+                  {isB40 && (
+                    <p className="mt-3 text-[11px] italic text-emerald-800">
+                      *Rate subject to quick STR / B40 proof verification on WhatsApp.*
+                    </p>
+                  )}
 
                   <div className="mt-4 flex flex-col gap-4 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>

@@ -99,6 +99,7 @@ export default async function handler(req, res) {
           o.staff_id,
           o.driver_id,
           o.current_status,
+          COALESCE(o.is_b40, 0) AS is_b40,
           o.updated_at,
           o.completed_at,
           CASE WHEN o.staff_id = 'unassigned' OR c.id IS NULL THEN NULL ELSE c.name END AS companion_name,

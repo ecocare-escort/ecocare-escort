@@ -101,8 +101,8 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSelectPackage = (tierId: PricingTier) => {
-    setBookingPrefill({ tierId });
+  const handleSelectPackage = (tierId: PricingTier, isB40 = false) => {
+    setBookingPrefill({ tierId, isB40 });
     navigateTo('book');
   };
 
