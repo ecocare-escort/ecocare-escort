@@ -18,6 +18,47 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN || undefined,
 });
 
+const formatMalaysiaPhone = (input: string): string => {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return raw;
+
+  let local = digits;
+  if (digits.startsWith('60') && digits.length >= 10) {
+    local = digits.slice(2);
+  } else if (digits.startsWith('0')) {
+    local = digits.slice(1);
+  }
+
+  if ((local.startsWith('11') || local.startsWith('15')) && local.length === 10) {
+    return `+60 ${local.slice(0, 2)}-${local.slice(2, 6)} ${local.slice(6, 10)}`;
+  }
+
+  if (local.startsWith('1') && local.length === 9) {
+    return `+60 ${local.slice(0, 2)}-${local.slice(2, 5)} ${local.slice(5, 9)}`;
+  }
+
+  if (local.startsWith('1') && local.length === 10) {
+    return `+60 ${local.slice(0, 2)}-${local.slice(2, 6)} ${local.slice(6, 10)}`;
+  }
+
+  if (local.startsWith('3') && local.length === 9) {
+    return `+60 ${local.slice(0, 1)}-${local.slice(1, 5)} ${local.slice(5, 9)}`;
+  }
+
+  return raw;
+};
+
+const DEFAULT_LOGIN_IDS: Record<string, string> = {
+  unassigned: 'unassigned',
+  'staff-dong-hao': 'donghao',
+  'staff-yenchi': 'yenchi',
+  'staff-mei-ling': 'meiling',
+  'staff-amirul': 'amirul',
+};
+
 async function ensureSchemaAndSeed() {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS staff (
@@ -26,7 +67,9 @@ async function ensureSchemaAndSeed() {
       role TEXT NOT NULL DEFAULT 'Care Companion',
       phone TEXT NOT NULL DEFAULT '+60 12-345 6789',
       photo_url TEXT,
-      cpr_certificate_id TEXT NOT NULL
+      cpr_certificate_id TEXT NOT NULL,
+      login_id TEXT,
+      passcode TEXT DEFAULT '123456'
     )
   `);
 
@@ -56,6 +99,18 @@ async function ensureSchemaAndSeed() {
     await db.execute(
       `ALTER TABLE staff ADD COLUMN phone TEXT NOT NULL DEFAULT '+60 12-345 6789'`
     );
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(`ALTER TABLE staff ADD COLUMN login_id TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(`ALTER TABLE staff ADD COLUMN passcode TEXT DEFAULT '123456'`);
   } catch {
     // Column already exists
   }
@@ -129,14 +184,33 @@ async function ensureSchemaAndSeed() {
   `);
 
   await db.execute(`
-    INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id)
+    INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode)
     VALUES
-      ('unassigned', 'Pending Dispatch', 'Unassigned', '', '', 'PENDING'),
-      ('staff-dong-hao', 'Dong Hao', 'Senior Care Companion', '+60 12-345 6789', 'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20612'),
-      ('staff-yenchi', 'Yenchi', 'Care Companion', '+60 12-678 9012', 'https://ui-avatars.com/api/?name=Yenchi&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20705'),
-      ('staff-mei-ling', 'Mei Ling Tan', 'Senior Care Companion', '+60 12-456 7890', 'https://ui-avatars.com/api/?name=Mei+Ling+Tan&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20489'),
-      ('staff-amirul', 'Amirul Hakim', 'Care Companion', '+60 12-890 1234', 'https://ui-avatars.com/api/?name=Amirul+Hakim&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20514')
+      ('unassigned', 'Pending Dispatch', 'Unassigned', '', '', 'PENDING', 'unassigned', '123456'),
+      ('staff-dong-hao', 'Dong Hao', 'Senior Care Companion', '+60 12-345 6789', 'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20612', 'donghao', '123456'),
+      ('staff-yenchi', 'Yenchi', 'Care Companion', '+60 12-678 9012', 'https://ui-avatars.com/api/?name=Yenchi&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20705', 'yenchi', '123456'),
+      ('staff-mei-ling', 'Mei Ling Tan', 'Senior Care Companion', '+60 12-456 7890', 'https://ui-avatars.com/api/?name=Mei+Ling+Tan&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20489', 'meiling', '123456'),
+      ('staff-amirul', 'Amirul Hakim', 'Care Companion', '+60 12-890 1234', 'https://ui-avatars.com/api/?name=Amirul+Hakim&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20514', 'amirul', '123456')
   `);
+
+  const existingStaff = await db.execute(`SELECT id, name, login_id, passcode FROM staff`);
+  for (const row of existingStaff.rows) {
+    const id = String(row.id);
+    const currentLogin = row.login_id ? String(row.login_id).trim() : '';
+    const currentPasscode = row.passcode ? String(row.passcode).trim() : '';
+    if (!currentLogin || !currentPasscode) {
+      const fallbackSlug =
+        DEFAULT_LOGIN_IDS[id] ||
+        String(row.name || id)
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '') ||
+        id;
+      await db.execute({
+        sql: `UPDATE staff SET login_id = ?, passcode = ? WHERE id = ?`,
+        args: [currentLogin || fallbackSlug, currentPasscode || '123456', id],
+      });
+    }
+  }
 
   const now = new Date().toISOString();
   await db.execute({
@@ -316,15 +390,35 @@ async function startServer() {
     return provided.length > 0 && provided === expected;
   };
 
+  const normalizeLoginId = (input: unknown, fallbackName: string): string => {
+    const raw = String(input || '').trim().toLowerCase().replace(/\s+/g, '');
+    if (raw) return raw.replace(/[^a-z0-9._-]/g, '');
+    const fromName = String(fallbackName || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 24);
+    return fromName || `companion${Math.floor(100 + Math.random() * 900)}`;
+  };
+
+  const defaultAvatarUrl = (name: string): string =>
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      name
+    )}&background=047857&color=ffffff&bold=true`;
+
   app.get('/api/staff', async (req: Request, res: Response) => {
     try {
-      if (req.query?.verify === '1' && !isAuthorizedAdmin(req)) {
+      const adminVerified = isAuthorizedAdmin(req);
+      if (req.query?.verify === '1' && !adminVerified) {
         res.status(401).json({ error: 'Invalid admin passcode.' });
         return;
       }
 
+      const columns = adminVerified
+        ? 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode'
+        : 'id, name, role, phone, photo_url, cpr_certificate_id, login_id';
+
       const result = await db.execute(`
-        SELECT id, name, role, phone, photo_url, cpr_certificate_id
+        SELECT ${columns}
         FROM staff
         WHERE id != 'unassigned'
         ORDER BY CASE id
@@ -352,14 +446,32 @@ async function startServer() {
       const body = req.body || {};
       const name = String(body.name ?? '').trim();
       const role = String(body.role ?? '').trim() || 'Care Companion';
-      const phone = String(body.phone ?? '').trim();
+      const formattedPhone = formatMalaysiaPhone(String(body.phone ?? '').trim());
       const cprCertificateId = String(body.cpr_certificate_id ?? '').trim();
+      const customPhotoUrl = String(body.photo_url ?? '').trim();
+      const requestedLoginId = String(body.login_id ?? '').trim();
+      const passcode = String(body.passcode ?? '').trim() || '123456';
 
-      if (!name || !phone || !cprCertificateId) {
+      if (!name || !formattedPhone || !cprCertificateId) {
         res.status(400).json({
           error: 'Full Name, Phone, and CPR Certificate ID are required.',
         });
         return;
+      }
+
+      let loginId = normalizeLoginId(requestedLoginId, name);
+      const conflictCheck = await db.execute({
+        sql: `SELECT id FROM staff WHERE LOWER(login_id) = LOWER(?) LIMIT 1`,
+        args: [loginId],
+      });
+      if (conflictCheck.rows.length > 0) {
+        if (requestedLoginId) {
+          res.status(409).json({
+            error: `Login ID "${loginId}" is already assigned to another staff member.`,
+          });
+          return;
+        }
+        loginId = `${loginId}${Math.floor(10 + Math.random() * 90)}`;
       }
 
       const slug = name
@@ -368,16 +480,23 @@ async function startServer() {
         .replace(/^-+|-+$/g, '')
         .slice(0, 24);
       const staffId = `staff-${slug || 'companion'}-${Math.floor(100 + Math.random() * 900)}`;
-      const photoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-        name
-      )}&background=047857&color=ffffff&bold=true`;
+      const photoUrl = customPhotoUrl || defaultAvatarUrl(name);
 
       await db.execute({
         sql: `
-          INSERT INTO staff (id, name, role, phone, photo_url, cpr_certificate_id)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        args: [staffId, name, role, phone, photoUrl, cprCertificateId],
+        args: [
+          staffId,
+          name,
+          role,
+          formattedPhone,
+          photoUrl,
+          cprCertificateId,
+          loginId,
+          passcode,
+        ],
       });
 
       res.status(201).json({
@@ -386,14 +505,124 @@ async function startServer() {
           id: staffId,
           name,
           role,
-          phone,
+          phone: formattedPhone,
           photo_url: photoUrl,
           cpr_certificate_id: cprCertificateId,
+          login_id: loginId,
+          passcode,
         },
       });
     } catch (error) {
       console.error('Failed to add staff member:', error);
       res.status(500).json({ error: 'Failed to add staff member.' });
+    }
+  });
+
+  app.put('/api/staff', async (req: Request, res: Response) => {
+    try {
+      if (!isAuthorizedAdmin(req)) {
+        res.status(401).json({ error: 'Unauthorized. Valid admin passcode required.' });
+        return;
+      }
+
+      const body = req.body || {};
+      const staffId = String(body.id ?? '').trim();
+      if (!staffId) {
+        res.status(400).json({ error: 'Missing required staff id.' });
+        return;
+      }
+      if (staffId === 'unassigned') {
+        res.status(400).json({
+          error: "Cannot modify the system 'unassigned' dispatch record.",
+        });
+        return;
+      }
+
+      const existingRes = await db.execute({
+        sql: `SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode FROM staff WHERE id = ? LIMIT 1`,
+        args: [staffId],
+      });
+      if (existingRes.rows.length === 0) {
+        res.status(404).json({ error: `Staff member "${staffId}" not found.` });
+        return;
+      }
+      const existing = existingRes.rows[0];
+
+      const name = String(body.name ?? existing.name ?? '').trim();
+      const role = String(body.role ?? existing.role ?? '').trim() || 'Care Companion';
+      const formattedPhone = formatMalaysiaPhone(
+        String(body.phone ?? existing.phone ?? '').trim()
+      );
+      const cprCertificateId = String(
+        body.cpr_certificate_id ?? existing.cpr_certificate_id ?? ''
+      ).trim();
+      const customPhotoUrl =
+        body.photo_url !== undefined
+          ? String(body.photo_url || '').trim()
+          : String(existing.photo_url || '').trim();
+      const nextLoginId = normalizeLoginId(
+        body.login_id !== undefined ? body.login_id : existing.login_id,
+        name
+      );
+      const nextPasscode =
+        String(body.passcode ?? '').trim() ||
+        String(existing.passcode ?? '').trim() ||
+        '123456';
+
+      if (!name || !formattedPhone || !cprCertificateId || !nextLoginId) {
+        res.status(400).json({
+          error: 'Full Name, Phone, CPR Certificate ID, and Login ID are required.',
+        });
+        return;
+      }
+
+      const loginConflict = await db.execute({
+        sql: `SELECT id FROM staff WHERE LOWER(login_id) = LOWER(?) AND id != ? LIMIT 1`,
+        args: [nextLoginId, staffId],
+      });
+      if (loginConflict.rows.length > 0) {
+        res.status(409).json({
+          error: `Login ID "${nextLoginId}" is already used by another staff member.`,
+        });
+        return;
+      }
+
+      const nextPhotoUrl = customPhotoUrl || defaultAvatarUrl(name);
+
+      await db.execute({
+        sql: `
+          UPDATE staff
+          SET name = ?, role = ?, phone = ?, photo_url = ?, cpr_certificate_id = ?, login_id = ?, passcode = ?
+          WHERE id = ?
+        `,
+        args: [
+          name,
+          role,
+          formattedPhone,
+          nextPhotoUrl,
+          cprCertificateId,
+          nextLoginId,
+          nextPasscode,
+          staffId,
+        ],
+      });
+
+      res.status(200).json({
+        ok: true,
+        staff: {
+          id: staffId,
+          name,
+          role,
+          phone: formattedPhone,
+          photo_url: nextPhotoUrl,
+          cpr_certificate_id: cprCertificateId,
+          login_id: nextLoginId,
+          passcode: nextPasscode,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to update staff member:', error);
+      res.status(500).json({ error: 'Failed to update staff member.' });
     }
   });
 
@@ -444,12 +673,76 @@ async function startServer() {
     }
   });
 
+  app.post('/api/staff-login', async (req: Request, res: Response) => {
+    try {
+      const body = req.body || {};
+      const loginId = String(body.login_id ?? body.username ?? '').trim().toLowerCase();
+      const staffId = String(body.staff_id ?? '').trim();
+      const passcode = String(body.passcode ?? body.password ?? '').trim();
+
+      if ((!loginId && !staffId) || !passcode) {
+        res.status(400).json({ error: 'Please enter your Login ID and Passcode.' });
+        return;
+      }
+
+      const result = staffId
+        ? await db.execute({
+            sql: `
+              SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode
+              FROM staff
+              WHERE id = ? AND id != 'unassigned'
+              LIMIT 1
+            `,
+            args: [staffId],
+          })
+        : await db.execute({
+            sql: `
+              SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode
+              FROM staff
+              WHERE LOWER(login_id) = LOWER(?) AND id != 'unassigned'
+              LIMIT 1
+            `,
+            args: [loginId],
+          });
+
+      if (result.rows.length === 0) {
+        res.status(401).json({ error: 'Invalid Staff Login ID or Passcode.' });
+        return;
+      }
+
+      const staff = result.rows[0];
+      const storedPasscode = String(staff.passcode || '123456').trim();
+      if (passcode !== storedPasscode) {
+        res.status(401).json({ error: 'Invalid Staff Login ID or Passcode.' });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        staff: {
+          id: staff.id,
+          name: staff.name,
+          role: staff.role,
+          phone: staff.phone,
+          photo_url: staff.photo_url,
+          cpr_certificate_id: staff.cpr_certificate_id,
+          login_id: staff.login_id,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to verify staff login:', error);
+      res.status(500).json({ error: 'Failed to verify staff credentials.' });
+    }
+  });
+
   app.post('/api/update-staff-profile', async (req: Request, res: Response) => {
     try {
       const { id, name, phone, photo_url, cpr_certificate_id } = req.body || {};
       const staffId = typeof id === 'string' ? id.trim() : '';
       const fullName = typeof name === 'string' ? name.trim() : '';
-      const phoneNumber = typeof phone === 'string' ? phone.trim() : '';
+      const phoneNumber = formatMalaysiaPhone(
+        typeof phone === 'string' ? phone.trim() : ''
+      );
       const photoUrl = typeof photo_url === 'string' ? photo_url.trim() : '';
       const cprId =
         typeof cpr_certificate_id === 'string' ? cpr_certificate_id.trim() : '';

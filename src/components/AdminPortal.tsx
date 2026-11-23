@@ -1,17 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
   Lock,
   LogOut,
+  Pencil,
   Phone,
   Plus,
   RefreshCw,
   ShieldCheck,
   Trash2,
+  Upload,
   User,
   Users,
+  X,
 } from 'lucide-react';
+import { formatMalaysiaPhone } from '../utils/formatMalaysiaPhone';
+import { compressImageToDataUrl } from '../utils/compressAvatar';
 
 interface StaffRecord {
   id: string;
@@ -20,6 +28,8 @@ interface StaffRecord {
   phone: string;
   photo_url: string | null;
   cpr_certificate_id: string;
+  login_id?: string | null;
+  passcode?: string | null;
 }
 
 interface AdminPortalProps {
@@ -57,8 +67,31 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
   const [role, setRole] = useState<string>('Care Companion');
   const [phone, setPhone] = useState<string>('');
   const [cprCertificateId, setCprCertificateId] = useState<string>('');
+  const [loginId, setLoginId] = useState<string>('');
+  const [staffPasscode, setStaffPasscode] = useState<string>('123456');
+  const [showAddPasscode, setShowAddPasscode] = useState<boolean>(false);
+  const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [addPreviewFailed, setAddPreviewFailed] = useState<boolean>(false);
+  const [compressingAddPhoto, setCompressingAddPhoto] = useState<boolean>(false);
   const [addingStaff, setAddingStaff] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const addFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Edit Staff Modal state
+  const [editingStaff, setEditingStaff] = useState<StaffRecord | null>(null);
+  const [editName, setEditName] = useState<string>('');
+  const [editRole, setEditRole] = useState<string>('Care Companion');
+  const [editPhone, setEditPhone] = useState<string>('');
+  const [editCprId, setEditCprId] = useState<string>('');
+  const [editLoginId, setEditLoginId] = useState<string>('');
+  const [editPasscode, setEditPasscode] = useState<string>('');
+  const [showEditPasscode, setShowEditPasscode] = useState<boolean>(false);
+  const [editPhotoUrl, setEditPhotoUrl] = useState<string>('');
+  const [editPreviewFailed, setEditPreviewFailed] = useState<boolean>(false);
+  const [compressingEditPhoto, setCompressingEditPhoto] = useState<boolean>(false);
+  const [savingEdit, setSavingEdit] = useState<boolean>(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Inline Remove confirmation state
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -81,6 +114,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
       }
 
       setStaffList((data?.staff || []) as StaffRecord[]);
+      setFailedAvatars({});
       return true;
     } catch (err) {
       setListError(
@@ -169,6 +203,47 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
     setAuthError(null);
     setActionFeedback(null);
     setConfirmDeleteId(null);
+    setEditingStaff(null);
+  };
+
+  const handleAddAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setCompressingAddPhoto(true);
+    setFormError(null);
+    try {
+      const compressedDataUrl = await compressImageToDataUrl(file, 200);
+      setPhotoUrl(compressedDataUrl);
+      setAddPreviewFailed(false);
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : 'Unable to process selected image.'
+      );
+    } finally {
+      setCompressingAddPhoto(false);
+    }
+  };
+
+  const handleEditAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setCompressingEditPhoto(true);
+    setEditError(null);
+    try {
+      const compressedDataUrl = await compressImageToDataUrl(file, 200);
+      setEditPhotoUrl(compressedDataUrl);
+      setEditPreviewFailed(false);
+    } catch (err) {
+      setEditError(
+        err instanceof Error ? err.message : 'Unable to process selected image.'
+      );
+    } finally {
+      setCompressingEditPhoto(false);
+    }
   };
 
   const handleAddStaff = async (e: React.FormEvent) => {
@@ -177,10 +252,15 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
 
     const trimmedName = name.trim();
     const trimmedRole = role.trim() || 'Care Companion';
-    const trimmedPhone = phone.trim();
+    const formattedPhone = formatMalaysiaPhone(phone);
     const trimmedCpr = cprCertificateId.trim();
+    const trimmedLoginId = loginId.trim().toLowerCase().replace(/\s+/g, '');
+    const trimmedPasscode = staffPasscode.trim() || '123456';
+    const trimmedPhotoUrl = photoUrl.trim();
 
-    if (!trimmedName || !trimmedPhone || !trimmedCpr) {
+    setPhone(formattedPhone);
+
+    if (!trimmedName || !formattedPhone || !trimmedCpr) {
       setFormError('Full Name, Phone, and CPR Certificate ID are required.');
       return;
     }
@@ -199,8 +279,11 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
         body: JSON.stringify({
           name: trimmedName,
           role: trimmedRole,
-          phone: trimmedPhone,
+          phone: formattedPhone,
           cpr_certificate_id: trimmedCpr,
+          photo_url: trimmedPhotoUrl,
+          login_id: trimmedLoginId,
+          passcode: trimmedPasscode,
         }),
       });
       const data = await parseJsonSafe(response);
@@ -219,7 +302,13 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
       setRole('Care Companion');
       setPhone('');
       setCprCertificateId('');
-      setActionFeedback(`Added ${trimmedName} to the EcoCare staff directory.`);
+      setLoginId('');
+      setStaffPasscode('123456');
+      setPhotoUrl('');
+      setAddPreviewFailed(false);
+      setActionFeedback(
+        `Added ${trimmedName} (Login ID: ${data?.staff?.login_id || trimmedLoginId || 'auto'}) to Turso.`
+      );
       await fetchStaffDirectory(verifiedPasscode);
     } catch (err) {
       setFormError(
@@ -227,6 +316,88 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
       );
     } finally {
       setAddingStaff(false);
+    }
+  };
+
+  const openEditModal = (member: StaffRecord) => {
+    setEditingStaff(member);
+    setEditName(member.name || '');
+    setEditRole(member.role || 'Care Companion');
+    setEditPhone(formatMalaysiaPhone(member.phone || ''));
+    setEditCprId(member.cpr_certificate_id || '');
+    setEditLoginId(member.login_id || '');
+    setEditPasscode(member.passcode || '123456');
+    setShowEditPasscode(false);
+    setEditPhotoUrl(member.photo_url || '');
+    setEditPreviewFailed(false);
+    setEditError(null);
+  };
+
+  const handleSaveEditStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifiedPasscode || !editingStaff || savingEdit) return;
+
+    const trimmedName = editName.trim();
+    const trimmedRole = editRole.trim() || 'Care Companion';
+    const formattedPhone = formatMalaysiaPhone(editPhone);
+    const trimmedCpr = editCprId.trim();
+    const trimmedLogin = editLoginId.trim().toLowerCase().replace(/\s+/g, '');
+    const trimmedPasscode = editPasscode.trim();
+    const trimmedPhoto = editPhotoUrl.trim();
+
+    setEditPhone(formattedPhone);
+
+    if (!trimmedName || !formattedPhone || !trimmedCpr || !trimmedLogin || !trimmedPasscode) {
+      setEditError(
+        'Full Name, Phone, CPR Certificate ID, Login ID, and Passcode are all required.'
+      );
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError(null);
+    setActionFeedback(null);
+
+    try {
+      const response = await fetch('/api/staff', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-passcode': verifiedPasscode,
+        },
+        body: JSON.stringify({
+          id: editingStaff.id,
+          name: trimmedName,
+          role: trimmedRole,
+          phone: formattedPhone,
+          cpr_certificate_id: trimmedCpr,
+          photo_url: trimmedPhoto,
+          login_id: trimmedLogin,
+          passcode: trimmedPasscode,
+        }),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (response.status === 401) {
+        setEditingStaff(null);
+        handleSignOut();
+        setAuthError('Admin session expired. Please sign in again.');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update staff member.');
+      }
+
+      setEditingStaff(null);
+      setActionFeedback(`Updated profile & credentials for ${trimmedName}.`);
+      await fetchStaffDirectory(verifiedPasscode);
+    } catch (err) {
+      setEditError(
+        err instanceof Error ? err.message : 'Unable to update staff record.'
+      );
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -334,7 +505,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
               Admin Staff Management
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              Sign in with your administrator passcode to add or remove care companions in Turso.
+              Sign in with your administrator passcode to add, edit, or remove care companions in Turso.
             </p>
 
             {authError && (
@@ -397,7 +568,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                   Staff Directory &amp; Access Control
                 </h1>
                 <p className="mt-0.5 text-sm text-slate-600">
-                  Changes made here immediately update companion accounts in the Employee Portal.
+                  Changes made here immediately update companion profiles and login credentials in the Employee Portal.
                 </p>
               </div>
 
@@ -444,8 +615,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                   Add New Staff
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  Creates a certified companion profile with default portal passcode{' '}
-                  <span className="font-mono text-slate-700">123456</span>.
+                  Upload a compressed avatar or paste a URL, and set their Employee Portal credentials.
                 </p>
 
                 {formError && (
@@ -458,6 +628,78 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                 )}
 
                 <form onSubmit={handleAddStaff} className="mt-4 space-y-4">
+                  {/* Avatar Upload + URL + Live Circular Preview */}
+                  <div>
+                    <span className="block text-xs font-medium text-slate-700">
+                      Profile Avatar (Optional)
+                    </span>
+                    <div className="mt-2 flex items-center gap-3.5">
+                      {photoUrl && !addPreviewFailed ? (
+                        <img
+                          src={photoUrl}
+                          alt={name || 'Staff avatar preview'}
+                          referrerPolicy="no-referrer"
+                          onError={() => setAddPreviewFailed(true)}
+                          className="h-16 w-16 shrink-0 rounded-full border border-slate-200 object-cover"
+                        />
+                      ) : (
+                        <div
+                          aria-label="Avatar preview placeholder"
+                          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-emerald-50 text-emerald-700"
+                        >
+                          <User className="h-7 w-7" aria-hidden="true" />
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <input
+                          ref={addFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAddAvatarFile}
+                          className="hidden"
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={compressingAddPhoto}
+                            onClick={() => addFileInputRef.current?.click()}
+                            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-emerald-700 hover:text-emerald-800 disabled:opacity-50 whitespace-nowrap"
+                          >
+                            <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>
+                              {compressingAddPhoto ? 'Resizing...' : 'Upload Photo'}
+                            </span>
+                          </button>
+
+                          {photoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotoUrl('');
+                                setAddPreviewFailed(false);
+                              }}
+                              className="text-xs text-slate-500 hover:text-red-600 hover:underline"
+                            >
+                              Reset
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={photoUrl}
+                          onChange={(e) => {
+                            setPhotoUrl(e.target.value);
+                            setAddPreviewFailed(false);
+                          }}
+                          placeholder="Or paste image URL (auto-avatar if blank)"
+                          aria-label="Profile avatar URL"
+                          className="min-h-[36px] w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-emerald-700 focus:bg-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label
                       htmlFor="admin-staff-name"
@@ -478,27 +720,49 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                     />
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="admin-staff-role"
-                      className="block text-xs font-medium text-slate-700"
-                    >
-                      Role
-                    </label>
-                    <input
-                      id="admin-staff-role"
-                      type="text"
-                      list="ecocare-staff-roles"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                      placeholder="Care Companion"
-                      className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                    />
-                    <datalist id="ecocare-staff-roles">
-                      <option value="Care Companion" />
-                      <option value="Senior Care Companion" />
-                      <option value="Medical Escort Lead" />
-                    </datalist>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="admin-staff-role"
+                        className="block text-xs font-medium text-slate-700"
+                      >
+                        Role
+                      </label>
+                      <input
+                        id="admin-staff-role"
+                        type="text"
+                        list="ecocare-staff-roles"
+                        value={role}
+                        onChange={(e) => setRole(e.target.value)}
+                        placeholder="Care Companion"
+                        className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      />
+                      <datalist id="ecocare-staff-roles">
+                        <option value="Care Companion" />
+                        <option value="Senior Care Companion" />
+                        <option value="Medical Escort Lead" />
+                      </datalist>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="admin-staff-cpr"
+                        className="block text-xs font-medium text-slate-700"
+                      >
+                        CPR Certificate ID *
+                      </label>
+                      <input
+                        id="admin-staff-cpr"
+                        type="text"
+                        value={cprCertificateId}
+                        onChange={(e) => {
+                          setCprCertificateId(e.target.value);
+                          if (formError) setFormError(null);
+                        }}
+                        placeholder="SJAM-CPR-20888"
+                        className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -506,7 +770,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                       htmlFor="admin-staff-phone"
                       className="block text-xs font-medium text-slate-700"
                     >
-                      Phone *
+                      Phone (Malaysian Auto-Format) *
                     </label>
                     <input
                       id="admin-staff-phone"
@@ -516,34 +780,70 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                         setPhone(e.target.value);
                         if (formError) setFormError(null);
                       }}
-                      placeholder="+60 12-345 6789"
+                      onBlur={() => setPhone((prev) => formatMalaysiaPhone(prev))}
+                      placeholder="01123464017 or 0123456789"
                       className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                     />
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="admin-staff-cpr"
-                      className="block text-xs font-medium text-slate-700"
-                    >
-                      CPR Certificate ID *
-                    </label>
-                    <input
-                      id="admin-staff-cpr"
-                      type="text"
-                      value={cprCertificateId}
-                      onChange={(e) => {
-                        setCprCertificateId(e.target.value);
-                        if (formError) setFormError(null);
-                      }}
-                      placeholder="SJAM-CPR-20888"
-                      className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                    />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="admin-staff-login-id"
+                        className="block text-xs font-medium text-slate-700"
+                      >
+                        Login ID
+                      </label>
+                      <input
+                        id="admin-staff-login-id"
+                        type="text"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        value={loginId}
+                        onChange={(e) => {
+                          setLoginId(e.target.value);
+                          if (formError) setFormError(null);
+                        }}
+                        placeholder="Auto from name if blank"
+                        className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="admin-staff-passcode"
+                        className="block text-xs font-medium text-slate-700"
+                      >
+                        Portal Passcode
+                      </label>
+                      <div className="relative mt-1">
+                        <input
+                          id="admin-staff-passcode"
+                          type={showAddPasscode ? 'text' : 'password'}
+                          value={staffPasscode}
+                          onChange={(e) => setStaffPasscode(e.target.value)}
+                          placeholder="123456"
+                          className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-10 font-mono text-sm text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                        />
+                        <button
+                          type="button"
+                          aria-label={showAddPasscode ? 'Hide passcode' : 'Show passcode'}
+                          onClick={() => setShowAddPasscode((prev) => !prev)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700"
+                        >
+                          {showAddPasscode ? (
+                            <EyeOff className="h-4 w-4" aria-hidden="true" />
+                          ) : (
+                            <Eye className="h-4 w-4" aria-hidden="true" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <button
                     type="submit"
-                    disabled={addingStaff}
+                    disabled={addingStaff || compressingAddPhoto}
                     className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
                   >
                     <Plus className="h-4 w-4" aria-hidden="true" />
@@ -643,9 +943,20 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                               </div>
 
                               <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-slate-500">
+                                {member.login_id && (
+                                  <>
+                                    <span className="inline-flex items-center gap-1 font-mono text-slate-600">
+                                      <KeyRound className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                                      {member.login_id}
+                                    </span>
+                                    <span aria-hidden="true" className="text-slate-300">
+                                      ·
+                                    </span>
+                                  </>
+                                )}
                                 <span className="inline-flex items-center gap-1 font-mono tabular-nums text-slate-700">
                                   <Phone className="h-3 w-3 text-slate-400" aria-hidden="true" />
-                                  {member.phone}
+                                  {formatMalaysiaPhone(member.phone)}
                                 </span>
                                 <span aria-hidden="true" className="text-slate-300">
                                   ·
@@ -679,14 +990,24 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                                 </button>
                               </>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteId(member.id)}
-                                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                <span>Remove</span>
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(member)}
+                                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-emerald-700 hover:bg-emerald-50/50 hover:text-emerald-800 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteId(member.id)}
+                                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                  <span>Remove</span>
+                                </button>
+                              </>
                             )}
                           </div>
                         </li>
@@ -699,6 +1020,261 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
           </div>
         )}
       </div>
+
+      {/* Edit Staff Modal */}
+      {editingStaff && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-staff-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+        >
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+              <div>
+                <h2
+                  id="edit-staff-modal-title"
+                  className="font-display text-lg font-bold text-slate-900"
+                >
+                  Edit Staff Member
+                </h2>
+                <p className="mt-0.5 font-mono text-xs text-slate-500">
+                  {editingStaff.id}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close edit modal"
+                onClick={() => setEditingStaff(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            {editError && (
+              <p
+                role="alert"
+                className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+              >
+                {editError}
+              </p>
+            )}
+
+            <form onSubmit={handleSaveEditStaff} className="mt-4 space-y-4">
+              {/* Avatar Upload + URL + Preview */}
+              <div>
+                <span className="block text-xs font-medium text-slate-700">
+                  Profile Avatar
+                </span>
+                <div className="mt-2 flex items-center gap-4">
+                  {editPhotoUrl && !editPreviewFailed ? (
+                    <img
+                      src={editPhotoUrl}
+                      alt={editName || editingStaff.name}
+                      referrerPolicy="no-referrer"
+                      onError={() => setEditPreviewFailed(true)}
+                      className="h-16 w-16 shrink-0 rounded-full border border-slate-200 object-cover"
+                    />
+                  ) : (
+                    <div
+                      aria-label="Avatar preview placeholder"
+                      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-emerald-50 text-emerald-700"
+                    >
+                      <User className="h-7 w-7" aria-hidden="true" />
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <input
+                      ref={editFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditAvatarFile}
+                      className="hidden"
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={compressingEditPhoto}
+                        onClick={() => editFileInputRef.current?.click()}
+                        className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-emerald-700 hover:text-emerald-800 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>
+                          {compressingEditPhoto ? 'Resizing...' : 'Upload Photo'}
+                        </span>
+                      </button>
+
+                      {editPhotoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditPhotoUrl('');
+                            setEditPreviewFailed(false);
+                          }}
+                          className="text-xs text-slate-500 hover:text-red-600 hover:underline"
+                        >
+                          Use Default Avatar
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={editPhotoUrl}
+                      onChange={(e) => {
+                        setEditPhotoUrl(e.target.value);
+                        setEditPreviewFailed(false);
+                      }}
+                      placeholder="Or paste image URL"
+                      aria-label="Edit staff avatar URL"
+                      className="min-h-[36px] w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-emerald-700 focus:bg-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="edit-modal-name"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Full Name *
+                  </label>
+                  <input
+                    id="edit-modal-name"
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-modal-role"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Role
+                  </label>
+                  <input
+                    id="edit-modal-role"
+                    type="text"
+                    list="ecocare-staff-roles"
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value)}
+                    className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="edit-modal-phone"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Phone *
+                  </label>
+                  <input
+                    id="edit-modal-phone"
+                    type="tel"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    onBlur={() => setEditPhone((prev) => formatMalaysiaPhone(prev))}
+                    className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-modal-cpr"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    CPR Certificate ID *
+                  </label>
+                  <input
+                    id="edit-modal-cpr"
+                    type="text"
+                    value={editCprId}
+                    onChange={(e) => setEditCprId(e.target.value)}
+                    className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="edit-modal-login-id"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Login ID *
+                  </label>
+                  <input
+                    id="edit-modal-login-id"
+                    type="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={editLoginId}
+                    onChange={(e) => setEditLoginId(e.target.value)}
+                    className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-modal-passcode"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Portal Passcode *
+                  </label>
+                  <div className="relative mt-1">
+                    <input
+                      id="edit-modal-passcode"
+                      type={showEditPasscode ? 'text' : 'password'}
+                      value={editPasscode}
+                      onChange={(e) => setEditPasscode(e.target.value)}
+                      className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-10 font-mono text-sm text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                    />
+                    <button
+                      type="button"
+                      aria-label={showEditPasscode ? 'Hide passcode' : 'Show passcode'}
+                      onClick={() => setShowEditPasscode((prev) => !prev)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700"
+                    >
+                      {showEditPasscode ? (
+                        <EyeOff className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="h-4 w-4" aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  disabled={savingEdit}
+                  onClick={() => setEditingStaff(null)}
+                  className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit || compressingEditPhoto}
+                  className="min-h-[44px] rounded-lg bg-emerald-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60"
+                >
+                  {savingEdit ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -15,6 +15,8 @@ import {
   Users,
 } from 'lucide-react';
 
+import { formatMalaysiaPhone } from '../utils/formatMalaysiaPhone';
+
 interface StaffProfile {
   id: string;
   name: string;
@@ -22,6 +24,7 @@ interface StaffProfile {
   phone: string;
   photo_url: string;
   cpr_certificate_id: string;
+  login_id?: string | null;
 }
 
 interface OrderRecord {
@@ -33,8 +36,6 @@ interface OrderRecord {
   current_status: number;
   updated_at: string;
 }
-
-const DEFAULT_STAFF_PASSCODE = '123456';
 
 const STATUS_BUTTONS = [
   { status: 1, label: 'Assigned' },
@@ -64,7 +65,9 @@ export function EmployeePortal({
   const [loadingStaffDirectory, setLoadingStaffDirectory] = useState<boolean>(true);
   const [staffDirectoryError, setStaffDirectoryError] = useState<string | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+  const [loginIdInput, setLoginIdInput] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [loggingIn, setLoggingIn] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [loggedInStaff, setLoggedInStaff] = useState<StaffProfile | null>(null);
@@ -108,9 +111,14 @@ export function EmployeePortal({
       }
       const list = data.staff as StaffProfile[];
       setStaffDirectory(list);
-      setSelectedStaffId((prev) =>
-        list.some((m) => m.id === prev) ? prev : list[0]?.id ?? ''
-      );
+      const nextSelected =
+        list.find((m) => m.id === selectedStaffId) || list[0] || null;
+      setSelectedStaffId(nextSelected?.id ?? '');
+      if (nextSelected) {
+        setLoginIdInput((prev) =>
+          prev.trim() ? prev : nextSelected.login_id || nextSelected.id
+        );
+      }
     } catch (err) {
       setStaffDirectoryError(
         err instanceof Error ? err.message : 'Unable to fetch staff list from Turso.'
@@ -178,23 +186,51 @@ export function EmployeePortal({
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loggingIn) return;
     setAuthError(null);
     setFeedback(null);
 
-    const chosenStaff = staffDirectory.find((m) => m.id === selectedStaffId);
-    if (!chosenStaff) {
-      setAuthError('Please select an active staff profile.');
+    const trimmedLoginId = loginIdInput.trim();
+    const trimmedPasscode = password.trim();
+
+    if ((!trimmedLoginId && !selectedStaffId) || !trimmedPasscode) {
+      setAuthError('Please enter your Login ID and Passcode.');
       return;
     }
 
-    if (password !== DEFAULT_STAFF_PASSCODE) {
-      setAuthError('Invalid Staff Password.');
-      return;
-    }
+    setLoggingIn(true);
+    try {
+      const response = await fetch('/api/staff-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          trimmedLoginId
+            ? { login_id: trimmedLoginId, passcode: trimmedPasscode }
+            : { staff_id: selectedStaffId, passcode: trimmedPasscode }
+        ),
+      });
 
-    setLoggedInStaff(chosenStaff);
-    setActiveOrder(null);
-    await loadDashboardData(chosenStaff);
+      const rawText = await response.text();
+      let data: { ok?: boolean; staff?: StaffProfile; error?: string } | null = null;
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        data = null;
+      }
+
+      if (!response.ok || !data?.staff) {
+        setAuthError(data?.error || 'Invalid Staff Login ID or Passcode.');
+        return;
+      }
+
+      setLoggedInStaff(data.staff);
+      setActiveOrder(null);
+      await loadDashboardData(data.staff);
+    } catch {
+      setAuthError('Unable to reach server to verify staff passcode.');
+    } finally {
+      setLoggingIn(false);
+    }
   };
 
   const handleLogout = () => {
@@ -258,17 +294,18 @@ export function EmployeePortal({
     if (!loggedInStaff || savingProfile) return;
 
     const trimmedName = editName.trim();
-    const trimmedPhone = editPhone.trim();
+    const formattedPhone = formatMalaysiaPhone(editPhone);
     const trimmedCprId = editCprId.trim();
     const trimmedPhotoUrl = editPhotoUrl.trim();
 
-    if (!trimmedName || !trimmedPhone || !trimmedCprId) {
+    if (!trimmedName || !formattedPhone || !trimmedCprId) {
       setProfileError(
         'Full Name, Phone Number, and CPR Certificate ID are required.'
       );
       return;
     }
 
+    setEditPhone(formattedPhone);
     setProfileError(null);
     setSavingProfile(true);
     pendingObjectUrlRef.current = null;
@@ -276,7 +313,7 @@ export function EmployeePortal({
     const updatedProfile: StaffProfile = {
       ...loggedInStaff,
       name: trimmedName,
-      phone: trimmedPhone,
+      phone: formattedPhone,
       photo_url: trimmedPhotoUrl,
       cpr_certificate_id: trimmedCprId,
     };
@@ -602,9 +639,12 @@ export function EmployeePortal({
                 <select
                   id="staff-profile-select"
                   value={selectedStaffId}
-                  disabled={loadingStaffDirectory || staffDirectory.length === 0}
+                  disabled={loadingStaffDirectory || staffDirectory.length === 0 || loggingIn}
                   onChange={(e) => {
-                    setSelectedStaffId(e.target.value);
+                    const nextId = e.target.value;
+                    setSelectedStaffId(nextId);
+                    const matched = staffDirectory.find((m) => m.id === nextId);
+                    setLoginIdInput(matched?.login_id || matched?.id || '');
                     if (authError) setAuthError(null);
                   }}
                   className="mt-1.5 min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20 disabled:bg-slate-50 disabled:text-slate-500"
@@ -625,37 +665,69 @@ export function EmployeePortal({
 
               <div>
                 <label
+                  htmlFor="staff-login-id"
+                  className="block text-sm font-medium text-slate-800"
+                >
+                  Login ID
+                </label>
+                <input
+                  id="staff-login-id"
+                  type="text"
+                  autoComplete="username"
+                  value={loginIdInput}
+                  disabled={loggingIn}
+                  onChange={(e) => {
+                    const nextLogin = e.target.value;
+                    setLoginIdInput(nextLogin);
+                    const matched = staffDirectory.find(
+                      (m) =>
+                        (m.login_id || '').toLowerCase() === nextLogin.trim().toLowerCase()
+                    );
+                    if (matched) {
+                      setSelectedStaffId(matched.id);
+                    }
+                    if (authError) setAuthError(null);
+                  }}
+                  placeholder="e.g. donghao"
+                  className="mt-1.5 min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                />
+              </div>
+
+              <div>
+                <label
                   htmlFor="staff-password"
                   className="block text-sm font-medium text-slate-800"
                 >
-                  Password
+                  Passcode
                 </label>
                 <input
                   id="staff-password"
                   type="password"
                   autoComplete="current-password"
                   value={password}
+                  disabled={loggingIn}
                   onChange={(e) => {
                     setPassword(e.target.value);
                     if (authError) setAuthError(null);
                   }}
-                  placeholder="Enter password"
+                  placeholder="Enter portal passcode"
                   className="mt-1.5 min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                 />
                 <p className="mt-1.5 text-xs text-slate-500">
-                  Default MVP staff password:{' '}
+                  Default initial passcode:{' '}
                   <span className="font-mono font-medium text-slate-700">
                     123456
-                  </span>
+                  </span>{' '}
+                  (unless updated in Admin Console)
                 </p>
               </div>
 
               <button
                 type="submit"
-                disabled={loadingStaffDirectory || staffDirectory.length === 0}
+                disabled={loadingStaffDirectory || loggingIn}
                 className="min-h-[48px] w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-50 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
               >
-                Sign In
+                {loggingIn ? 'Verifying Passcode...' : 'Sign In'}
               </button>
             </form>
           </div>
@@ -826,7 +898,8 @@ export function EmployeePortal({
                       type="text"
                       value={editPhone}
                       onChange={(e) => setEditPhone(e.target.value)}
-                      placeholder="+60 12-345 6789"
+                      onBlur={() => setEditPhone((prev) => formatMalaysiaPhone(prev))}
+                      placeholder="0123456789 or +60 12-345 6789"
                       className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                     />
                   </div>

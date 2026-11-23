@@ -1,4 +1,4 @@
-import { db, ensureSchemaAndSeed } from './_db.js';
+import { db, ensureSchemaAndSeed, formatMalaysiaPhone } from './_db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -11,7 +11,9 @@ export default async function handler(req, res) {
     const { id, name, phone, photo_url, cpr_certificate_id } = req.body || {};
     const staffId = typeof id === 'string' ? id.trim() : '';
     const fullName = typeof name === 'string' ? name.trim() : '';
-    const phoneNumber = typeof phone === 'string' ? phone.trim() : '';
+    const phoneNumber = formatMalaysiaPhone(
+      typeof phone === 'string' ? phone.trim() : ''
+    );
     const photoUrl = typeof photo_url === 'string' ? photo_url.trim() : '';
     const cprId =
       typeof cpr_certificate_id === 'string' ? cpr_certificate_id.trim() : '';

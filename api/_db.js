@@ -12,6 +12,51 @@ export const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN || undefined,
 });
 
+export function formatMalaysiaPhone(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return raw;
+
+  let local = digits;
+  if (digits.startsWith('60') && digits.length >= 10) {
+    local = digits.slice(2);
+  } else if (digits.startsWith('0')) {
+    local = digits.slice(1);
+  }
+
+  // 11-digit mobile numbers (011 / 015 -> 10 digits after +60)
+  if ((local.startsWith('11') || local.startsWith('15')) && local.length === 10) {
+    return `+60 ${local.slice(0, 2)}-${local.slice(2, 6)} ${local.slice(6, 10)}`;
+  }
+
+  // Standard 10-digit mobile numbers (e.g., 012-345 6789 -> 9 digits after +60)
+  if (local.startsWith('1') && local.length === 9) {
+    return `+60 ${local.slice(0, 2)}-${local.slice(2, 5)} ${local.slice(5, 9)}`;
+  }
+
+  // Fallback for other 10-digit mobile lengths starting with 1
+  if (local.startsWith('1') && local.length === 10) {
+    return `+60 ${local.slice(0, 2)}-${local.slice(2, 6)} ${local.slice(6, 10)}`;
+  }
+
+  // Klang Valley landline (03-XXXX XXXX)
+  if (local.startsWith('3') && local.length === 9) {
+    return `+60 ${local.slice(0, 1)}-${local.slice(1, 5)} ${local.slice(5, 9)}`;
+  }
+
+  return raw;
+}
+
+const DEFAULT_LOGIN_IDS = {
+  unassigned: 'unassigned',
+  'staff-dong-hao': 'donghao',
+  'staff-yenchi': 'yenchi',
+  'staff-mei-ling': 'meiling',
+  'staff-amirul': 'amirul',
+};
+
 let initPromise = null;
 
 export async function ensureSchemaAndSeed() {
@@ -24,7 +69,9 @@ export async function ensureSchemaAndSeed() {
           role TEXT NOT NULL DEFAULT 'Care Companion',
           phone TEXT NOT NULL DEFAULT '+60 12-345 6789',
           photo_url TEXT,
-          cpr_certificate_id TEXT NOT NULL
+          cpr_certificate_id TEXT NOT NULL,
+          login_id TEXT,
+          passcode TEXT DEFAULT '123456'
         )
       `);
 
@@ -62,41 +109,68 @@ export async function ensureSchemaAndSeed() {
         )
       `);
 
-      // Safely add missing columns on older Turso tables without dropping existing bookings/orders
-      const staffCols = await db.execute(`PRAGMA table_info(staff)`);
-      const staffColNames = new Set(staffCols.rows.map((r) => String(r.name)));
-      if (!staffColNames.has('role')) {
-        await db.execute(
-          `ALTER TABLE staff ADD COLUMN role TEXT NOT NULL DEFAULT 'Care Companion'`
-        );
-      }
-      if (!staffColNames.has('phone')) {
-        await db.execute(
-          `ALTER TABLE staff ADD COLUMN phone TEXT NOT NULL DEFAULT '+60 12-345 6789'`
-        );
+      // Safely add missing columns to existing Turso tables without dropping data
+      const staffAlterStatements = [
+        `ALTER TABLE staff ADD COLUMN role TEXT NOT NULL DEFAULT 'Care Companion'`,
+        `ALTER TABLE staff ADD COLUMN phone TEXT NOT NULL DEFAULT '+60 12-345 6789'`,
+        `ALTER TABLE staff ADD COLUMN login_id TEXT`,
+        `ALTER TABLE staff ADD COLUMN passcode TEXT DEFAULT '123456'`,
+      ];
+      for (const sql of staffAlterStatements) {
+        try {
+          await db.execute(sql);
+        } catch {
+          // Column already exists
+        }
       }
 
-      const orderCols = await db.execute(`PRAGMA table_info(orders)`);
-      const orderColNames = new Set(orderCols.rows.map((r) => String(r.name)));
-      if (!orderColNames.has('hospital_name')) {
-        await db.execute(`ALTER TABLE orders ADD COLUMN hospital_name TEXT`);
-      }
-      if (!orderColNames.has('pickup_time')) {
-        await db.execute(`ALTER TABLE orders ADD COLUMN pickup_time TEXT`);
-      }
-      if (!orderColNames.has('completed_at')) {
-        await db.execute(`ALTER TABLE orders ADD COLUMN completed_at TEXT`);
+      const orderAlterStatements = [
+        `ALTER TABLE orders ADD COLUMN hospital_name TEXT`,
+        `ALTER TABLE orders ADD COLUMN pickup_time TEXT`,
+        `ALTER TABLE orders ADD COLUMN completed_at TEXT`,
+      ];
+      for (const sql of orderAlterStatements) {
+        try {
+          await db.execute(sql);
+        } catch {
+          // Column already exists
+        }
       }
 
       await db.execute(`
-        INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id)
+        INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode)
         VALUES
-          ('unassigned', 'Pending Dispatch', 'Unassigned', '', '', 'PENDING'),
-          ('staff-dong-hao', 'Dong Hao', 'Senior Care Companion', '+60 12-345 6789', 'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20612'),
-          ('staff-yenchi', 'Yenchi', 'Care Companion', '+60 12-678 9012', 'https://ui-avatars.com/api/?name=Yenchi&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20705'),
-          ('staff-mei-ling', 'Mei Ling Tan', 'Senior Care Companion', '+60 12-456 7890', 'https://ui-avatars.com/api/?name=Mei+Ling+Tan&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20489'),
-          ('staff-amirul', 'Amirul Hakim', 'Care Companion', '+60 12-890 1234', 'https://ui-avatars.com/api/?name=Amirul+Hakim&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20514')
+          ('unassigned', 'Pending Dispatch', 'Unassigned', '', '', 'PENDING', 'unassigned', '123456'),
+          ('staff-dong-hao', 'Dong Hao', 'Senior Care Companion', '+60 12-345 6789', 'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20612', 'donghao', '123456'),
+          ('staff-yenchi', 'Yenchi', 'Care Companion', '+60 12-678 9012', 'https://ui-avatars.com/api/?name=Yenchi&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20705', 'yenchi', '123456'),
+          ('staff-mei-ling', 'Mei Ling Tan', 'Senior Care Companion', '+60 12-456 7890', 'https://ui-avatars.com/api/?name=Mei+Ling+Tan&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20489', 'meiling', '123456'),
+          ('staff-amirul', 'Amirul Hakim', 'Care Companion', '+60 12-890 1234', 'https://ui-avatars.com/api/?name=Amirul+Hakim&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20514', 'amirul', '123456')
       `);
+
+      // Backfill existing staff rows that have NULL/empty login_id or passcode
+      const existingStaff = await db.execute(
+        `SELECT id, name, login_id, passcode FROM staff`
+      );
+      for (const row of existingStaff.rows) {
+        const id = String(row.id);
+        const currentLogin = row.login_id ? String(row.login_id).trim() : '';
+        const currentPasscode = row.passcode ? String(row.passcode).trim() : '';
+
+        if (!currentLogin || !currentPasscode) {
+          const fallbackSlug =
+            DEFAULT_LOGIN_IDS[id] ||
+            String(row.name || id)
+              .toLowerCase()
+              .replace(/[^a-z0-9]/g, '') ||
+            id;
+          const nextLogin = currentLogin || fallbackSlug;
+          const nextPasscode = currentPasscode || '123456';
+          await db.execute({
+            sql: `UPDATE staff SET login_id = ?, passcode = ? WHERE id = ?`,
+            args: [nextLogin, nextPasscode, id],
+          });
+        }
+      }
 
       const now = new Date().toISOString();
       await db.execute({
