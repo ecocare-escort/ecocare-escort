@@ -1,5 +1,6 @@
 import { Mail, Phone, MapPin } from 'lucide-react';
 import type { AppView } from './HomeView';
+import { BrandLogo } from './BrandLogo';
 
 interface FooterProps {
   onNavigate: (view: AppView) => void;
@@ -15,9 +16,10 @@ export function Footer({ onNavigate }: FooterProps) {
             <button
               type="button"
               onClick={() => onNavigate('home')}
-              className="inline-block text-left font-display text-xl font-bold tracking-tight text-white transition-colors hover:text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              aria-label="EcoCare Escorts Home"
+              className="inline-block text-left transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-xl"
             >
-              EcoCare Escorts
+              <BrandLogo variant="full" />
             </button>
 
             <p className="mt-3 text-sm font-medium leading-relaxed text-emerald-300">

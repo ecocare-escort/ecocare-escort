@@ -14,6 +14,7 @@ import {
   type TrackedBookingInfo,
 } from './components/LiveTrackerPage';
 import { Footer } from './components/Footer';
+import { BrandLogo } from './components/BrandLogo';
 
 interface RouteState {
   view: AppView;
@@ -99,13 +100,13 @@ export default function App() {
       {/* Global Sticky Top Header */}
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-8 px-6">
-          {/* Left: Brand Wordmark */}
+          {/* Left: Brand Logo & Wordmark */}
           <button
             type="button"
             onClick={() => navigateTo('home')}
-            className="font-display text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+            className="inline-flex items-center rounded-lg py-1 transition-opacity hover:opacity-90 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
           >
-            EcoCare Escorts
+            <BrandLogo variant="mark" />
           </button>
 
           {/* Right: Navigation Menu (Home | Services & Pricing | Live Tracker | FAQ | [Book Now]) */}
