@@ -30,16 +30,16 @@ interface PublicStaffMember {
   vehicle_color?: string | null;
 }
 
-// TODO: Update exact unit/lot number and street address for the Serdang Operations Hub here.
 const OPERATIONS_HUB = {
   companyName: 'EcoCare Escorts (Serdang Operations Hub)',
-  address: 'Jalan Universiti, 43400 Serdang, Selangor, Malaysia',
+  address: 'Jalan SP, Taman Serdang Perdana, 43300 Seri Kembangan, Selangor, Malaysia',
   coverage: 'Free mileage within Serdang (0–10 km) & Greater Klang Valley coverage',
   hours: 'Monday – Saturday, 7:00 AM – 6:00 PM',
   whatsappDisplay: '+60 12-345 6789',
   whatsappHref: 'https://wa.me/60123456789',
   email: 'care@ecocareescorts.my',
-  mapsHref: 'https://maps.google.com/?q=Serdang,Selangor,Malaysia',
+  mapsHref:
+    'https://maps.google.com/?q=Jalan+SP,+Taman+Serdang+Perdana,+Seri+Kembangan,+Selangor',
 };
 
 function getInitials(name: string): string {

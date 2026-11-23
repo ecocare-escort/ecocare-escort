@@ -220,9 +220,14 @@ export function Footer({ onNavigate }: FooterProps) {
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
                 <div>
                   <span className="block text-xs text-slate-400">Operating Base</span>
-                  <span className="text-sm text-slate-200">
-                    Serdang, Selangor · Klang Valley
-                  </span>
+                  <a
+                    href="https://maps.google.com/?q=Jalan+SP,+Taman+Serdang+Perdana,+Seri+Kembangan,+Selangor"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm leading-relaxed text-slate-200 transition-colors hover:text-emerald-300"
+                  >
+                    Jalan SP, Taman Serdang Perdana, 43300 Seri Kembangan, Selangor, Malaysia
+                  </a>
                 </div>
               </li>
             </ul>
