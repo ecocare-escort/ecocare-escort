@@ -318,7 +318,7 @@ export function LiveTrackerPage({
             aria-label="Order ID lookup"
             value={lookupInput}
             onChange={(e) => setLookupInput(e.target.value)}
-            placeholder="Enter Tracking Number (e.g., ECE-1234)"
+            placeholder="Enter Tracking Number (e.g., ECE-0001)"
             className="min-h-[44px] flex-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-xs text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
           />
           <button

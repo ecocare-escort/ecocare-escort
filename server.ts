@@ -282,6 +282,17 @@ async function ensureSchemaAndSeed() {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS app_counters (
+      name TEXT PRIMARY KEY,
+      value INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await db.execute(`
+    INSERT OR IGNORE INTO app_counters (name, value) VALUES ('order_seq', 0)
+  `);
+
   // Only seed default orders if the database has never seeded orders before
   const ordersSeedFlagRes = await db.execute({
     sql: `SELECT value FROM app_settings WHERE key = 'orders_seeded' LIMIT 1`,
@@ -358,6 +369,28 @@ async function assignAvailableDriver(dbClient = db): Promise<string | null> {
   return String(result.rows[0].id);
 }
 
+async function getNextOrderId(dbClient = db): Promise<string> {
+  await dbClient.execute(`
+    CREATE TABLE IF NOT EXISTS app_counters (
+      name TEXT PRIMARY KEY,
+      value INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await dbClient.execute(`
+    INSERT OR IGNORE INTO app_counters (name, value) VALUES ('order_seq', 0)
+  `);
+
+  const result = await dbClient.execute(`
+    UPDATE app_counters
+    SET value = value + 1
+    WHERE name = 'order_seq'
+    RETURNING value
+  `);
+
+  const nextNum = Number(result.rows[0]?.value ?? 1);
+  return `ECE-${String(nextNum).padStart(4, '0')}`;
+}
+
 interface BookingPayload {
   patientName?: string;
   hospitalName?: string;
@@ -422,18 +455,7 @@ async function startServer() {
       const addonsTotal = addons.reduce((sum, item) => sum + item.price, 0);
       const totalPrice = basePrice + addonsTotal + mileageFee;
 
-      let bookingId = `ECE-${Math.floor(1000 + Math.random() * 9000)}`;
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        const candidate = `ECE-${Math.floor(1000 + Math.random() * 9000)}`;
-        const existing = await db.execute({
-          sql: 'SELECT order_id FROM orders WHERE UPPER(order_id) = UPPER(?) LIMIT 1',
-          args: [candidate],
-        });
-        if (existing.rows.length === 0) {
-          bookingId = candidate;
-          break;
-        }
-      }
+      const bookingId = await getNextOrderId(db);
       const createdAt = new Date().toISOString();
       const addonSummary =
         addons.length > 0

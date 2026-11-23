@@ -218,6 +218,17 @@ export async function ensureSchemaAndSeed() {
         )
       `);
 
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS app_counters (
+          name TEXT PRIMARY KEY,
+          value INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
+      await db.execute(`
+        INSERT OR IGNORE INTO app_counters (name, value) VALUES ('order_seq', 0)
+      `);
+
       // Only seed default orders if the database has never seeded orders before
       const ordersSeedFlagRes = await db.execute({
         sql: `SELECT value FROM app_settings WHERE key = 'orders_seeded' LIMIT 1`,
@@ -290,4 +301,26 @@ export async function assignAvailableDriver(dbClient = db) {
   }
 
   return String(result.rows[0].id);
+}
+
+export async function getNextOrderId(dbClient = db) {
+  await dbClient.execute(`
+    CREATE TABLE IF NOT EXISTS app_counters (
+      name TEXT PRIMARY KEY,
+      value INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await dbClient.execute(`
+    INSERT OR IGNORE INTO app_counters (name, value) VALUES ('order_seq', 0)
+  `);
+
+  const result = await dbClient.execute(`
+    UPDATE app_counters
+    SET value = value + 1
+    WHERE name = 'order_seq'
+    RETURNING value
+  `);
+
+  const nextNum = Number(result.rows[0]?.value ?? 1);
+  return `ECE-${String(nextNum).padStart(4, '0')}`;
 }

@@ -1,18 +1,10 @@
-import { assignAvailableDriver, db, ensureSchemaAndSeed, isTursoConfigured } from './_db.js';
-
-async function generateUniqueOrderId() {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const candidate = `ECE-${Math.floor(1000 + Math.random() * 9000)}`;
-    const existing = await db.execute({
-      sql: 'SELECT order_id FROM orders WHERE UPPER(order_id) = UPPER(?) LIMIT 1',
-      args: [candidate],
-    });
-    if (existing.rows.length === 0) {
-      return candidate;
-    }
-  }
-  return `ECE-${Math.floor(100000 + Math.random() * 900000)}`;
-}
+import {
+  assignAvailableDriver,
+  db,
+  ensureSchemaAndSeed,
+  getNextOrderId,
+  isTursoConfigured,
+} from './_db.js';
 
 export default async function handler(req, res) {
   try {
@@ -81,7 +73,7 @@ export default async function handler(req, res) {
     const addonsTotal = addons.reduce((sum, item) => sum + item.price, 0);
     const totalPrice = basePrice + addonsTotal + mileageFee;
 
-    const orderId = await generateUniqueOrderId();
+    const orderId = await getNextOrderId(db);
     const createdAt = new Date().toISOString();
     const addonSummary =
       addons.length > 0
