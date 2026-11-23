@@ -66,8 +66,8 @@ export default async function handler(req, res) {
       }
 
       const columns = adminVerified
-        ? 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode'
-        : 'id, name, role, phone, photo_url, cpr_certificate_id, login_id';
+        ? 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate'
+        : 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate';
 
       const result = await db.execute(`
         SELECT ${columns}
@@ -105,10 +105,27 @@ export default async function handler(req, res) {
       const customPhotoUrl = String(body.photo_url ?? '').trim();
       const requestedLoginId = String(body.login_id ?? '').trim();
       const passcode = String(body.passcode ?? '').trim() || '123456';
+      const isDriver =
+        body.is_driver === true || Number(body.is_driver) === 1 ? 1 : 0;
+      const vehicleModel = isDriver
+        ? String(body.vehicle_model ?? '').trim() || null
+        : null;
+      const vehicleColor = isDriver
+        ? String(body.vehicle_color ?? '').trim() || null
+        : null;
+      const vehiclePlate = isDriver
+        ? String(body.vehicle_plate ?? '').trim().toUpperCase() || null
+        : null;
 
       if (!name || !formattedPhone || !cprCertificateId) {
         return res.status(400).json({
           error: 'Full Name, Phone, and CPR Certificate ID are required.',
+        });
+      }
+
+      if (isDriver && (!vehicleModel || !vehiclePlate)) {
+        return res.status(400).json({
+          error: 'Vehicle Model and Plate Number are required for designated drivers.',
         });
       }
 
@@ -132,8 +149,8 @@ export default async function handler(req, res) {
 
       await db.execute({
         sql: `
-          INSERT INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode, is_driver, vehicle_model, vehicle_color, vehicle_plate)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           staffId,
@@ -144,6 +161,10 @@ export default async function handler(req, res) {
           cprCertificateId,
           loginId,
           passcode,
+          isDriver,
+          vehicleModel,
+          vehicleColor,
+          vehiclePlate,
         ],
       });
 
@@ -158,6 +179,10 @@ export default async function handler(req, res) {
           cpr_certificate_id: cprCertificateId,
           login_id: loginId,
           passcode,
+          is_driver: isDriver,
+          vehicle_model: vehicleModel,
+          vehicle_color: vehicleColor,
+          vehicle_plate: vehiclePlate,
         },
       });
     }
@@ -183,7 +208,7 @@ export default async function handler(req, res) {
       }
 
       const existingRes = await db.execute({
-        sql: `SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode FROM staff WHERE id = ? LIMIT 1`,
+        sql: `SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate FROM staff WHERE id = ? LIMIT 1`,
         args: [staffId],
       });
       if (existingRes.rows.length === 0) {
@@ -212,9 +237,47 @@ export default async function handler(req, res) {
         String(existing.passcode ?? '').trim() ||
         '123456';
 
+      const nextIsDriver =
+        body.is_driver !== undefined
+          ? body.is_driver === true || Number(body.is_driver) === 1
+            ? 1
+            : 0
+          : Number(existing.is_driver || 0) === 1
+            ? 1
+            : 0;
+      const nextVehicleModel = nextIsDriver
+        ? String(
+            body.vehicle_model !== undefined
+              ? body.vehicle_model
+              : existing.vehicle_model ?? ''
+          ).trim() || null
+        : null;
+      const nextVehicleColor = nextIsDriver
+        ? String(
+            body.vehicle_color !== undefined
+              ? body.vehicle_color
+              : existing.vehicle_color ?? ''
+          ).trim() || null
+        : null;
+      const nextVehiclePlate = nextIsDriver
+        ? String(
+            body.vehicle_plate !== undefined
+              ? body.vehicle_plate
+              : existing.vehicle_plate ?? ''
+          )
+            .trim()
+            .toUpperCase() || null
+        : null;
+
       if (!name || !formattedPhone || !cprCertificateId || !nextLoginId) {
         return res.status(400).json({
           error: 'Full Name, Phone, CPR Certificate ID, and Login ID are required.',
+        });
+      }
+
+      if (nextIsDriver && (!nextVehicleModel || !nextVehiclePlate)) {
+        return res.status(400).json({
+          error: 'Vehicle Model and Plate Number are required for designated drivers.',
         });
       }
 
@@ -233,7 +296,7 @@ export default async function handler(req, res) {
       await db.execute({
         sql: `
           UPDATE staff
-          SET name = ?, role = ?, phone = ?, photo_url = ?, cpr_certificate_id = ?, login_id = ?, passcode = ?
+          SET name = ?, role = ?, phone = ?, photo_url = ?, cpr_certificate_id = ?, login_id = ?, passcode = ?, is_driver = ?, vehicle_model = ?, vehicle_color = ?, vehicle_plate = ?
           WHERE id = ?
         `,
         args: [
@@ -244,6 +307,10 @@ export default async function handler(req, res) {
           cprCertificateId,
           nextLoginId,
           nextPasscode,
+          nextIsDriver,
+          nextVehicleModel,
+          nextVehicleColor,
+          nextVehiclePlate,
           staffId,
         ],
       });
@@ -259,6 +326,10 @@ export default async function handler(req, res) {
           cpr_certificate_id: cprCertificateId,
           login_id: nextLoginId,
           passcode: nextPasscode,
+          is_driver: nextIsDriver,
+          vehicle_model: nextVehicleModel,
+          vehicle_color: nextVehicleColor,
+          vehicle_plate: nextVehiclePlate,
         },
       });
     }
@@ -287,6 +358,10 @@ export default async function handler(req, res) {
       // Foreign key safety: reassign any past/active orders before removing staff row
       await db.execute({
         sql: `UPDATE orders SET staff_id = 'unassigned' WHERE staff_id = ?`,
+        args: [staffId],
+      });
+      await db.execute({
+        sql: `UPDATE orders SET driver_id = NULL WHERE driver_id = ?`,
         args: [staffId],
       });
 

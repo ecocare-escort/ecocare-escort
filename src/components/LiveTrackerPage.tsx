@@ -35,6 +35,13 @@ interface TrackerApiRecord {
   staff_phone?: string | null;
   staff_photo_url: string | null;
   staff_cpr_certificate_id: string | null;
+  driver_id?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  driver_photo_url?: string | null;
+  driver_vehicle_model?: string | null;
+  driver_vehicle_color?: string | null;
+  driver_vehicle_plate?: string | null;
 }
 
 interface LiveTrackerPageProps {
@@ -118,6 +125,7 @@ export function LiveTrackerPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [photoFailed, setPhotoFailed] = useState<boolean>(false);
+  const [driverPhotoFailed, setDriverPhotoFailed] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [lookupInput, setLookupInput] = useState<string>(resolvedOrderId);
 
@@ -133,6 +141,7 @@ export function LiveTrackerPage({
       setLoading(true);
       setError(null);
       setPhotoFailed(false);
+      setDriverPhotoFailed(false);
     }
     try {
       const response = await fetch(
@@ -394,6 +403,72 @@ export function LiveTrackerPage({
                     )}
                   </div>
                 </div>
+
+                {/* Assigned Driver & Vehicle (shown when auto-dispatched driver_id is present) */}
+                {tracker.driver_id && (
+                  <div className="mt-5 border-t border-white/10 pt-4">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
+                      Assigned Driver &amp; Vehicle
+                    </p>
+                    <div className="mt-2.5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        {tracker.driver_photo_url && !driverPhotoFailed ? (
+                          <img
+                            src={tracker.driver_photo_url}
+                            alt={tracker.driver_name || 'Assigned Driver'}
+                            referrerPolicy="no-referrer"
+                            onError={() => setDriverPhotoFailed(true)}
+                            className="h-11 w-11 shrink-0 rounded-full border border-emerald-400/50 object-cover object-top"
+                          />
+                        ) : (
+                          <div
+                            aria-label="Driver circular photo placeholder"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-emerald-400/50 bg-slate-800 text-emerald-300"
+                          >
+                            <User className="h-5 w-5" aria-hidden="true" />
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <p className="truncate font-display text-sm font-semibold text-white">
+                            {tracker.driver_name || 'EcoCare Designated Driver'}
+                          </p>
+                          {tracker.driver_phone && (
+                            <a
+                              href={`tel:${tracker.driver_phone.replace(/\s+/g, '')}`}
+                              className="mt-0.5 inline-flex items-center gap-1 font-mono text-xs tabular-nums text-slate-300 hover:text-emerald-300 hover:underline"
+                            >
+                              <Phone className="h-3 w-3" aria-hidden="true" />
+                              <span>{tracker.driver_phone}</span>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+
+                      {(tracker.driver_vehicle_model || tracker.driver_vehicle_plate) && (
+                        <div className="inline-flex w-fit items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-100">
+                          <Car className="h-3.5 w-3.5 shrink-0 text-emerald-300" aria-hidden="true" />
+                          <span>
+                            {tracker.driver_vehicle_model || 'Designated Vehicle'}
+                            {tracker.driver_vehicle_color
+                              ? ` (${tracker.driver_vehicle_color})`
+                              : ''}
+                          </span>
+                          {tracker.driver_vehicle_plate && (
+                            <>
+                              <span aria-hidden="true" className="text-emerald-400/60">
+                                ·
+                              </span>
+                              <span className="font-mono font-bold tabular-nums tracking-wide text-white">
+                                {tracker.driver_vehicle_plate}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Active Patient & Stage Summary Banner */}
                 <div className="mt-5 flex flex-col gap-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

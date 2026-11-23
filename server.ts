@@ -69,7 +69,11 @@ async function ensureSchemaAndSeed() {
       photo_url TEXT,
       cpr_certificate_id TEXT NOT NULL,
       login_id TEXT,
-      passcode TEXT DEFAULT '123456'
+      passcode TEXT DEFAULT '123456',
+      is_driver INTEGER DEFAULT 0,
+      vehicle_model TEXT,
+      vehicle_color TEXT,
+      vehicle_plate TEXT
     )
   `);
 
@@ -80,6 +84,7 @@ async function ensureSchemaAndSeed() {
       hospital_name TEXT,
       pickup_time TEXT,
       staff_id TEXT NOT NULL,
+      driver_id TEXT,
       current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 6),
       updated_at TEXT NOT NULL,
       completed_at TEXT,
@@ -116,6 +121,30 @@ async function ensureSchemaAndSeed() {
   }
 
   try {
+    await db.execute(`ALTER TABLE staff ADD COLUMN is_driver INTEGER DEFAULT 0`);
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(`ALTER TABLE staff ADD COLUMN vehicle_model TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(`ALTER TABLE staff ADD COLUMN vehicle_color TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(`ALTER TABLE staff ADD COLUMN vehicle_plate TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  try {
     await db.execute(`ALTER TABLE orders ADD COLUMN hospital_name TEXT`);
   } catch {
     // Column already exists
@@ -129,6 +158,12 @@ async function ensureSchemaAndSeed() {
 
   try {
     await db.execute(`ALTER TABLE orders ADD COLUMN completed_at TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  try {
+    await db.execute(`ALTER TABLE orders ADD COLUMN driver_id TEXT`);
   } catch {
     // Column already exists
   }
@@ -265,6 +300,27 @@ async function ensureSchemaAndSeed() {
   `);
 }
 
+async function assignAvailableDriver(dbClient = db): Promise<string | null> {
+  const result = await dbClient.execute(`
+    SELECT
+      s.id,
+      COUNT(CASE WHEN o.current_status < 6 THEN 1 END) AS active_count
+    FROM staff s
+    LEFT JOIN orders o ON o.driver_id = s.id
+    WHERE COALESCE(s.is_driver, 0) = 1
+      AND s.id != 'unassigned'
+    GROUP BY s.id
+    ORDER BY active_count ASC, RANDOM()
+    LIMIT 1
+  `);
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return String(result.rows[0].id);
+}
+
 interface BookingPayload {
   patientName?: string;
   hospitalName?: string;
@@ -367,19 +423,22 @@ async function startServer() {
         ],
       });
 
-      // Automatically create an unassigned pending order (status 1) for Employee Portal & Live Tracker
+      const assignedDriverId = await assignAvailableDriver(db);
+
+      // Automatically create an unassigned pending order (status 1) with auto-dispatched driver for Employee Portal & Live Tracker
       await db.execute({
         sql: `
-          INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
-          VALUES (?, ?, ?, ?, 'unassigned', 1, ?)
+          INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, driver_id, current_status, updated_at)
+          VALUES (?, ?, ?, ?, 'unassigned', ?, 1, ?)
         `,
-        args: [bookingId, patientName, hospitalName, timeText, createdAt],
+        args: [bookingId, patientName, hospitalName, timeText, assignedDriverId, createdAt],
       });
 
       res.status(200).json({
         ok: true,
         order_id: bookingId,
         bookingId,
+        driver_id: assignedDriverId,
         totalPrice,
         addons,
         storageTarget: isTursoConfigured ? 'turso' : 'local-libsql',
@@ -441,8 +500,8 @@ async function startServer() {
       }
 
       const columns = adminVerified
-        ? 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode'
-        : 'id, name, role, phone, photo_url, cpr_certificate_id, login_id';
+        ? 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate'
+        : 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate';
 
       const result = await db.execute(`
         SELECT ${columns}
@@ -478,10 +537,28 @@ async function startServer() {
       const customPhotoUrl = String(body.photo_url ?? '').trim();
       const requestedLoginId = String(body.login_id ?? '').trim();
       const passcode = String(body.passcode ?? '').trim() || '123456';
+      const isDriver =
+        body.is_driver === true || Number(body.is_driver) === 1 ? 1 : 0;
+      const vehicleModel = isDriver
+        ? String(body.vehicle_model ?? '').trim() || null
+        : null;
+      const vehicleColor = isDriver
+        ? String(body.vehicle_color ?? '').trim() || null
+        : null;
+      const vehiclePlate = isDriver
+        ? String(body.vehicle_plate ?? '').trim().toUpperCase() || null
+        : null;
 
       if (!name || !formattedPhone || !cprCertificateId) {
         res.status(400).json({
           error: 'Full Name, Phone, and CPR Certificate ID are required.',
+        });
+        return;
+      }
+
+      if (isDriver && (!vehicleModel || !vehiclePlate)) {
+        res.status(400).json({
+          error: 'Vehicle Model and Plate Number are required for designated drivers.',
         });
         return;
       }
@@ -511,8 +588,8 @@ async function startServer() {
 
       await db.execute({
         sql: `
-          INSERT INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode, is_driver, vehicle_model, vehicle_color, vehicle_plate)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           staffId,
@@ -523,6 +600,10 @@ async function startServer() {
           cprCertificateId,
           loginId,
           passcode,
+          isDriver,
+          vehicleModel,
+          vehicleColor,
+          vehiclePlate,
         ],
       });
 
@@ -537,6 +618,10 @@ async function startServer() {
           cpr_certificate_id: cprCertificateId,
           login_id: loginId,
           passcode,
+          is_driver: isDriver,
+          vehicle_model: vehicleModel,
+          vehicle_color: vehicleColor,
+          vehicle_plate: vehiclePlate,
         },
       });
     } catch (error) {
@@ -566,7 +651,7 @@ async function startServer() {
       }
 
       const existingRes = await db.execute({
-        sql: `SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode FROM staff WHERE id = ? LIMIT 1`,
+        sql: `SELECT id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate FROM staff WHERE id = ? LIMIT 1`,
         args: [staffId],
       });
       if (existingRes.rows.length === 0) {
@@ -596,9 +681,48 @@ async function startServer() {
         String(existing.passcode ?? '').trim() ||
         '123456';
 
+      const nextIsDriver =
+        body.is_driver !== undefined
+          ? body.is_driver === true || Number(body.is_driver) === 1
+            ? 1
+            : 0
+          : Number(existing.is_driver || 0) === 1
+            ? 1
+            : 0;
+      const nextVehicleModel = nextIsDriver
+        ? String(
+            body.vehicle_model !== undefined
+              ? body.vehicle_model
+              : existing.vehicle_model ?? ''
+          ).trim() || null
+        : null;
+      const nextVehicleColor = nextIsDriver
+        ? String(
+            body.vehicle_color !== undefined
+              ? body.vehicle_color
+              : existing.vehicle_color ?? ''
+          ).trim() || null
+        : null;
+      const nextVehiclePlate = nextIsDriver
+        ? String(
+            body.vehicle_plate !== undefined
+              ? body.vehicle_plate
+              : existing.vehicle_plate ?? ''
+          )
+            .trim()
+            .toUpperCase() || null
+        : null;
+
       if (!name || !formattedPhone || !cprCertificateId || !nextLoginId) {
         res.status(400).json({
           error: 'Full Name, Phone, CPR Certificate ID, and Login ID are required.',
+        });
+        return;
+      }
+
+      if (nextIsDriver && (!nextVehicleModel || !nextVehiclePlate)) {
+        res.status(400).json({
+          error: 'Vehicle Model and Plate Number are required for designated drivers.',
         });
         return;
       }
@@ -619,7 +743,7 @@ async function startServer() {
       await db.execute({
         sql: `
           UPDATE staff
-          SET name = ?, role = ?, phone = ?, photo_url = ?, cpr_certificate_id = ?, login_id = ?, passcode = ?
+          SET name = ?, role = ?, phone = ?, photo_url = ?, cpr_certificate_id = ?, login_id = ?, passcode = ?, is_driver = ?, vehicle_model = ?, vehicle_color = ?, vehicle_plate = ?
           WHERE id = ?
         `,
         args: [
@@ -630,6 +754,10 @@ async function startServer() {
           cprCertificateId,
           nextLoginId,
           nextPasscode,
+          nextIsDriver,
+          nextVehicleModel,
+          nextVehicleColor,
+          nextVehiclePlate,
           staffId,
         ],
       });
@@ -645,6 +773,10 @@ async function startServer() {
           cpr_certificate_id: cprCertificateId,
           login_id: nextLoginId,
           passcode: nextPasscode,
+          is_driver: nextIsDriver,
+          vehicle_model: nextVehicleModel,
+          vehicle_color: nextVehicleColor,
+          vehicle_plate: nextVehiclePlate,
         },
       });
     } catch (error) {
@@ -680,6 +812,10 @@ async function startServer() {
 
       await db.execute({
         sql: `UPDATE orders SET staff_id = 'unassigned' WHERE staff_id = ?`,
+        args: [staffId],
+      });
+      await db.execute({
+        sql: `UPDATE orders SET driver_id = NULL WHERE driver_id = ?`,
         args: [staffId],
       });
 
@@ -1049,24 +1185,42 @@ async function startServer() {
         return;
       }
 
+      const existingOrderRes = await db.execute({
+        sql: `SELECT order_id, driver_id FROM orders WHERE UPPER(order_id) = UPPER(?) LIMIT 1`,
+        args: [orderId],
+      });
+
+      if (existingOrderRes.rows.length === 0) {
+        res.status(404).json({ error: `Order ${orderId} not found.` });
+        return;
+      }
+
+      const existingDriverId = existingOrderRes.rows[0].driver_id
+        ? String(existingOrderRes.rows[0].driver_id).trim()
+        : null;
+
+      const assignedDriverId = existingDriverId
+        ? existingDriverId
+        : await assignAvailableDriver(db);
+
       const updatedAt = new Date().toISOString();
       const completedAt = statusNum === 6 ? updatedAt : null;
       const result = staffId
         ? await db.execute({
             sql: `
               UPDATE orders
-              SET current_status = ?, staff_id = ?, completed_at = ?, updated_at = ?
+              SET current_status = ?, staff_id = ?, driver_id = COALESCE(NULLIF(driver_id, ''), ?), completed_at = ?, updated_at = ?
               WHERE UPPER(order_id) = UPPER(?)
             `,
-            args: [statusNum, staffId, completedAt, updatedAt, orderId],
+            args: [statusNum, staffId, assignedDriverId, completedAt, updatedAt, orderId],
           })
         : await db.execute({
             sql: `
               UPDATE orders
-              SET current_status = ?, completed_at = ?, updated_at = ?
+              SET current_status = ?, driver_id = COALESCE(NULLIF(driver_id, ''), ?), completed_at = ?, updated_at = ?
               WHERE UPPER(order_id) = UPPER(?)
             `,
-            args: [statusNum, completedAt, updatedAt, orderId],
+            args: [statusNum, assignedDriverId, completedAt, updatedAt, orderId],
           });
 
       if (result.rowsAffected === 0) {
@@ -1080,6 +1234,7 @@ async function startServer() {
         current_status: statusNum,
         status: statusNum,
         staff_id: staffId,
+        driver_id: assignedDriverId,
         updated_at: updatedAt,
         completed_at: completedAt,
       });
@@ -1116,9 +1271,17 @@ async function startServer() {
             CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.role END AS staff_role,
             CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.phone END AS staff_phone,
             CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.photo_url END AS staff_photo_url,
-            CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.cpr_certificate_id END AS staff_cpr_certificate_id
+            CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.cpr_certificate_id END AS staff_cpr_certificate_id,
+            CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN o.driver_id ELSE NULL END AS driver_id,
+            CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.name ELSE NULL END AS driver_name,
+            CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.phone ELSE NULL END AS driver_phone,
+            CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.photo_url ELSE NULL END AS driver_photo_url,
+            CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.vehicle_model ELSE NULL END AS driver_vehicle_model,
+            CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.vehicle_color ELSE NULL END AS driver_vehicle_color,
+            CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.vehicle_plate ELSE NULL END AS driver_vehicle_plate
           FROM orders o
           LEFT JOIN staff s ON o.staff_id = s.id
+          LEFT JOIN staff d ON o.driver_id = d.id
           WHERE UPPER(o.order_id) = UPPER(?)
           LIMIT 1
         `,

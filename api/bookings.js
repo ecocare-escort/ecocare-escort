@@ -1,4 +1,4 @@
-import { db, ensureSchemaAndSeed, isTursoConfigured } from './_db.js';
+import { assignAvailableDriver, db, ensureSchemaAndSeed, isTursoConfigured } from './_db.js';
 
 async function generateUniqueOrderId() {
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -111,19 +111,22 @@ export default async function handler(req, res) {
       ],
     });
 
-    // Insert as an unassigned pending order (status 1) so staff can claim it in /portal and clients can track it
+    const assignedDriverId = await assignAvailableDriver(db);
+
+    // Insert as an unassigned pending order (status 1) with auto-dispatched driver so staff can claim it in /portal and clients can track it
     await db.execute({
       sql: `
-        INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
-        VALUES (?, ?, ?, ?, 'unassigned', 1, ?)
+        INSERT INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, driver_id, current_status, updated_at)
+        VALUES (?, ?, ?, ?, 'unassigned', ?, 1, ?)
       `,
-      args: [orderId, patientName, hospitalName, timeText, createdAt],
+      args: [orderId, patientName, hospitalName, timeText, assignedDriverId, createdAt],
     });
 
     return res.status(200).json({
       ok: true,
       order_id: orderId,
       bookingId: orderId,
+      driver_id: assignedDriverId,
       totalPrice,
       addons,
       storageTarget: isTursoConfigured ? 'turso' : 'local-libsql',

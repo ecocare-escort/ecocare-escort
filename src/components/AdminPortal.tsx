@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Car,
   CheckCircle2,
   Eye,
   EyeOff,
@@ -30,6 +31,10 @@ interface StaffRecord {
   cpr_certificate_id: string;
   login_id?: string | null;
   passcode?: string | null;
+  is_driver?: number | boolean;
+  vehicle_model?: string | null;
+  vehicle_color?: string | null;
+  vehicle_plate?: string | null;
 }
 
 interface AdminPortalProps {
@@ -75,6 +80,10 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
   const [compressingAddPhoto, setCompressingAddPhoto] = useState<boolean>(false);
   const [addingStaff, setAddingStaff] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isDriver, setIsDriver] = useState<boolean>(false);
+  const [vehicleModel, setVehicleModel] = useState<string>('');
+  const [vehicleColor, setVehicleColor] = useState<string>('');
+  const [vehiclePlate, setVehiclePlate] = useState<string>('');
   const addFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Edit Staff Modal state
@@ -89,6 +98,10 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
   const [editPhotoUrl, setEditPhotoUrl] = useState<string>('');
   const [editPreviewFailed, setEditPreviewFailed] = useState<boolean>(false);
   const [compressingEditPhoto, setCompressingEditPhoto] = useState<boolean>(false);
+  const [editIsDriver, setEditIsDriver] = useState<boolean>(false);
+  const [editVehicleModel, setEditVehicleModel] = useState<string>('');
+  const [editVehicleColor, setEditVehicleColor] = useState<string>('');
+  const [editVehiclePlate, setEditVehiclePlate] = useState<string>('');
   const [savingEdit, setSavingEdit] = useState<boolean>(false);
   const [editError, setEditError] = useState<string | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -257,11 +270,20 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
     const trimmedLoginId = loginId.trim().toLowerCase().replace(/\s+/g, '');
     const trimmedPasscode = staffPasscode.trim() || '123456';
     const trimmedPhotoUrl = photoUrl.trim();
+    const trimmedVehicleModel = vehicleModel.trim();
+    const trimmedVehicleColor = vehicleColor.trim();
+    const formattedPlate = vehiclePlate.trim().toUpperCase();
 
     setPhone(formattedPhone);
+    setVehiclePlate(formattedPlate);
 
     if (!trimmedName || !formattedPhone || !trimmedCpr) {
       setFormError('Full Name, Phone, and CPR Certificate ID are required.');
+      return;
+    }
+
+    if (isDriver && (!trimmedVehicleModel || !formattedPlate)) {
+      setFormError('Vehicle Model and Plate Number are required for designated drivers.');
       return;
     }
 
@@ -284,6 +306,10 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
           photo_url: trimmedPhotoUrl,
           login_id: trimmedLoginId,
           passcode: trimmedPasscode,
+          is_driver: isDriver ? 1 : 0,
+          vehicle_model: isDriver ? trimmedVehicleModel : null,
+          vehicle_color: isDriver ? trimmedVehicleColor : null,
+          vehicle_plate: isDriver ? formattedPlate : null,
         }),
       });
       const data = await parseJsonSafe(response);
@@ -306,6 +332,10 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
       setStaffPasscode('123456');
       setPhotoUrl('');
       setAddPreviewFailed(false);
+      setIsDriver(false);
+      setVehicleModel('');
+      setVehicleColor('');
+      setVehiclePlate('');
       setActionFeedback(
         `Added ${trimmedName} (Login ID: ${data?.staff?.login_id || trimmedLoginId || 'auto'}) to Turso.`
       );
@@ -330,6 +360,10 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
     setShowEditPasscode(false);
     setEditPhotoUrl(member.photo_url || '');
     setEditPreviewFailed(false);
+    setEditIsDriver(Boolean(Number(member.is_driver || 0)));
+    setEditVehicleModel(member.vehicle_model || '');
+    setEditVehicleColor(member.vehicle_color || '');
+    setEditVehiclePlate(member.vehicle_plate || '');
     setEditError(null);
   };
 
@@ -344,13 +378,22 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
     const trimmedLogin = editLoginId.trim().toLowerCase().replace(/\s+/g, '');
     const trimmedPasscode = editPasscode.trim();
     const trimmedPhoto = editPhotoUrl.trim();
+    const trimmedEditModel = editVehicleModel.trim();
+    const trimmedEditColor = editVehicleColor.trim();
+    const formattedEditPlate = editVehiclePlate.trim().toUpperCase();
 
     setEditPhone(formattedPhone);
+    setEditVehiclePlate(formattedEditPlate);
 
     if (!trimmedName || !formattedPhone || !trimmedCpr || !trimmedLogin || !trimmedPasscode) {
       setEditError(
         'Full Name, Phone, CPR Certificate ID, Login ID, and Passcode are all required.'
       );
+      return;
+    }
+
+    if (editIsDriver && (!trimmedEditModel || !formattedEditPlate)) {
+      setEditError('Vehicle Model and Plate Number are required for designated drivers.');
       return;
     }
 
@@ -374,6 +417,10 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
           photo_url: trimmedPhoto,
           login_id: trimmedLogin,
           passcode: trimmedPasscode,
+          is_driver: editIsDriver ? 1 : 0,
+          vehicle_model: editIsDriver ? trimmedEditModel : null,
+          vehicle_color: editIsDriver ? trimmedEditColor : null,
+          vehicle_plate: editIsDriver ? formattedEditPlate : null,
         }),
       });
       const data = await parseJsonSafe(response);
@@ -841,6 +888,82 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                     </div>
                   </div>
 
+                  {/* Designated Driver Toggle & Vehicle Details */}
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3.5">
+                    <label className="flex cursor-pointer items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={isDriver}
+                        onChange={(e) => {
+                          setIsDriver(e.target.checked);
+                          if (formError) setFormError(null);
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 accent-emerald-700"
+                      />
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                        <Car className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+                        <span>Designated Driver (Auto-Dispatch Pool)</span>
+                      </span>
+                    </label>
+
+                    {isDriver && (
+                      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                        <div className="sm:col-span-3">
+                          <label
+                            htmlFor="admin-vehicle-model"
+                            className="block text-xs font-medium text-slate-700"
+                          >
+                            Vehicle Model *
+                          </label>
+                          <input
+                            id="admin-vehicle-model"
+                            type="text"
+                            value={vehicleModel}
+                            onChange={(e) => setVehicleModel(e.target.value)}
+                            placeholder="e.g., Proton Waja 1.6"
+                            className="mt-1 min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-1">
+                          <label
+                            htmlFor="admin-vehicle-color"
+                            className="block text-xs font-medium text-slate-700"
+                          >
+                            Vehicle Color
+                          </label>
+                          <input
+                            id="admin-vehicle-color"
+                            type="text"
+                            value={vehicleColor}
+                            onChange={(e) => setVehicleColor(e.target.value)}
+                            placeholder="e.g., Silver"
+                            className="mt-1 min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label
+                            htmlFor="admin-vehicle-plate"
+                            className="block text-xs font-medium text-slate-700"
+                          >
+                            Plate Number *
+                          </label>
+                          <input
+                            id="admin-vehicle-plate"
+                            type="text"
+                            value={vehiclePlate}
+                            onChange={(e) =>
+                              setVehiclePlate(e.target.value.toUpperCase())
+                            }
+                            placeholder="e.g., WXY 1234"
+                            className="mt-1 min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-mono text-xs uppercase text-slate-900 placeholder:font-sans placeholder:normal-case placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <button
                     type="submit"
                     disabled={addingStaff || compressingAddPhoto}
@@ -930,7 +1053,7 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                             )}
 
                             <div className="min-w-0">
-                              <div className="flex flex-wrap items-baseline gap-x-2">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                 <span className="truncate font-display text-sm font-semibold text-slate-900">
                                   {member.name}
                                 </span>
@@ -940,6 +1063,12 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                                 <span className="text-xs text-slate-600">
                                   {member.role}
                                 </span>
+                                {Boolean(Number(member.is_driver || 0)) && (
+                                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                                    <Car className="h-3 w-3 shrink-0" aria-hidden="true" />
+                                    <span>Driver</span>
+                                  </span>
+                                )}
                               </div>
 
                               <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-slate-500">
@@ -966,6 +1095,27 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                                   {member.cpr_certificate_id}
                                 </span>
                               </div>
+
+                              {Boolean(Number(member.is_driver || 0)) &&
+                                (member.vehicle_model || member.vehicle_plate) && (
+                                  <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                    <Car className="h-3 w-3 shrink-0 text-slate-500" aria-hidden="true" />
+                                    <span>
+                                      {member.vehicle_model || 'Assigned Vehicle'}
+                                      {member.vehicle_color ? ` (${member.vehicle_color})` : ''}
+                                    </span>
+                                    {member.vehicle_plate && (
+                                      <>
+                                        <span aria-hidden="true" className="text-slate-300">
+                                          ·
+                                        </span>
+                                        <span className="font-mono font-semibold text-slate-900">
+                                          {member.vehicle_plate}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                             </div>
                           </div>
 
@@ -1252,6 +1402,82 @@ export function AdminPortal({ onBackToPortal, onBackToHome }: AdminPortalProps) 
                     </button>
                   </div>
                 </div>
+              </div>
+
+              {/* Edit Modal: Designated Driver Toggle & Vehicle Details */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3.5">
+                <label className="flex cursor-pointer items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={editIsDriver}
+                    onChange={(e) => {
+                      setEditIsDriver(e.target.checked);
+                      if (editError) setEditError(null);
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 accent-emerald-700"
+                  />
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                    <Car className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+                    <span>Designated Driver (Auto-Dispatch Pool)</span>
+                  </span>
+                </label>
+
+                {editIsDriver && (
+                  <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                    <div className="sm:col-span-3">
+                      <label
+                        htmlFor="edit-vehicle-model"
+                        className="block text-xs font-medium text-slate-700"
+                      >
+                        Vehicle Model *
+                      </label>
+                      <input
+                        id="edit-vehicle-model"
+                        type="text"
+                        value={editVehicleModel}
+                        onChange={(e) => setEditVehicleModel(e.target.value)}
+                        placeholder="e.g., Proton Waja 1.6"
+                        className="mt-1 min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-1">
+                      <label
+                        htmlFor="edit-vehicle-color"
+                        className="block text-xs font-medium text-slate-700"
+                      >
+                        Vehicle Color
+                      </label>
+                      <input
+                        id="edit-vehicle-color"
+                        type="text"
+                        value={editVehicleColor}
+                        onChange={(e) => setEditVehicleColor(e.target.value)}
+                        placeholder="e.g., Silver"
+                        className="mt-1 min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label
+                        htmlFor="edit-vehicle-plate"
+                        className="block text-xs font-medium text-slate-700"
+                      >
+                        Plate Number *
+                      </label>
+                      <input
+                        id="edit-vehicle-plate"
+                        type="text"
+                        value={editVehiclePlate}
+                        onChange={(e) =>
+                          setEditVehiclePlate(e.target.value.toUpperCase())
+                        }
+                        placeholder="e.g., WXY 1234"
+                        className="mt-1 min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-mono text-xs uppercase text-slate-900 placeholder:font-sans placeholder:normal-case placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 pt-4">

@@ -32,9 +32,17 @@ export default async function handler(req, res) {
           CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.role END AS staff_role,
           CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.phone END AS staff_phone,
           CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.photo_url END AS staff_photo_url,
-          CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.cpr_certificate_id END AS staff_cpr_certificate_id
+          CASE WHEN o.staff_id = 'unassigned' THEN NULL ELSE s.cpr_certificate_id END AS staff_cpr_certificate_id,
+          CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN o.driver_id ELSE NULL END AS driver_id,
+          CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.name ELSE NULL END AS driver_name,
+          CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.phone ELSE NULL END AS driver_phone,
+          CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.photo_url ELSE NULL END AS driver_photo_url,
+          CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.vehicle_model ELSE NULL END AS driver_vehicle_model,
+          CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.vehicle_color ELSE NULL END AS driver_vehicle_color,
+          CASE WHEN d.id IS NOT NULL AND o.driver_id != 'unassigned' THEN d.vehicle_plate ELSE NULL END AS driver_vehicle_plate
         FROM orders o
         LEFT JOIN staff s ON o.staff_id = s.id
+        LEFT JOIN staff d ON o.driver_id = d.id
         WHERE UPPER(o.order_id) = UPPER(?)
         LIMIT 1
       `,

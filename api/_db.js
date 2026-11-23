@@ -71,7 +71,11 @@ export async function ensureSchemaAndSeed() {
           photo_url TEXT,
           cpr_certificate_id TEXT NOT NULL,
           login_id TEXT,
-          passcode TEXT DEFAULT '123456'
+          passcode TEXT DEFAULT '123456',
+          is_driver INTEGER DEFAULT 0,
+          vehicle_model TEXT,
+          vehicle_color TEXT,
+          vehicle_plate TEXT
         )
       `);
 
@@ -82,6 +86,7 @@ export async function ensureSchemaAndSeed() {
           hospital_name TEXT,
           pickup_time TEXT,
           staff_id TEXT NOT NULL,
+          driver_id TEXT,
           current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 6),
           updated_at TEXT NOT NULL,
           completed_at TEXT,
@@ -115,6 +120,10 @@ export async function ensureSchemaAndSeed() {
         `ALTER TABLE staff ADD COLUMN phone TEXT NOT NULL DEFAULT '+60 12-345 6789'`,
         `ALTER TABLE staff ADD COLUMN login_id TEXT`,
         `ALTER TABLE staff ADD COLUMN passcode TEXT DEFAULT '123456'`,
+        `ALTER TABLE staff ADD COLUMN is_driver INTEGER DEFAULT 0`,
+        `ALTER TABLE staff ADD COLUMN vehicle_model TEXT`,
+        `ALTER TABLE staff ADD COLUMN vehicle_color TEXT`,
+        `ALTER TABLE staff ADD COLUMN vehicle_plate TEXT`,
       ];
       for (const sql of staffAlterStatements) {
         try {
@@ -128,6 +137,7 @@ export async function ensureSchemaAndSeed() {
         `ALTER TABLE orders ADD COLUMN hospital_name TEXT`,
         `ALTER TABLE orders ADD COLUMN pickup_time TEXT`,
         `ALTER TABLE orders ADD COLUMN completed_at TEXT`,
+        `ALTER TABLE orders ADD COLUMN driver_id TEXT`,
       ];
       for (const sql of orderAlterStatements) {
         try {
@@ -221,4 +231,25 @@ export async function ensureSchemaAndSeed() {
   }
 
   return initPromise;
+}
+
+export async function assignAvailableDriver(dbClient = db) {
+  const result = await dbClient.execute(`
+    SELECT
+      s.id,
+      COUNT(CASE WHEN o.current_status < 6 THEN 1 END) AS active_count
+    FROM staff s
+    LEFT JOIN orders o ON o.driver_id = s.id
+    WHERE COALESCE(s.is_driver, 0) = 1
+      AND s.id != 'unassigned'
+    GROUP BY s.id
+    ORDER BY active_count ASC, RANDOM()
+    LIMIT 1
+  `);
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return String(result.rows[0].id);
 }

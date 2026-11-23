@@ -1,4 +1,4 @@
-import { db, ensureSchemaAndSeed } from './_db.js';
+import { assignAvailableDriver, db, ensureSchemaAndSeed } from './_db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -24,6 +24,23 @@ export default async function handler(req, res) {
       });
     }
 
+    const existingOrderRes = await db.execute({
+      sql: `SELECT order_id, driver_id FROM orders WHERE UPPER(order_id) = UPPER(?) LIMIT 1`,
+      args: [orderId],
+    });
+
+    if (existingOrderRes.rows.length === 0) {
+      return res.status(404).json({ error: `Order ${orderId} not found.` });
+    }
+
+    const existingDriverId = existingOrderRes.rows[0].driver_id
+      ? String(existingOrderRes.rows[0].driver_id).trim()
+      : null;
+
+    const assignedDriverId = existingDriverId
+      ? existingDriverId
+      : await assignAvailableDriver(db);
+
     const updatedAt = new Date().toISOString();
     const completedAt = statusNum === 6 ? updatedAt : null;
 
@@ -31,18 +48,18 @@ export default async function handler(req, res) {
       ? await db.execute({
           sql: `
             UPDATE orders
-            SET current_status = ?, staff_id = ?, completed_at = ?, updated_at = ?
+            SET current_status = ?, staff_id = ?, driver_id = COALESCE(NULLIF(driver_id, ''), ?), completed_at = ?, updated_at = ?
             WHERE UPPER(order_id) = UPPER(?)
           `,
-          args: [statusNum, staffId, completedAt, updatedAt, orderId],
+          args: [statusNum, staffId, assignedDriverId, completedAt, updatedAt, orderId],
         })
       : await db.execute({
           sql: `
             UPDATE orders
-            SET current_status = ?, completed_at = ?, updated_at = ?
+            SET current_status = ?, driver_id = COALESCE(NULLIF(driver_id, ''), ?), completed_at = ?, updated_at = ?
             WHERE UPPER(order_id) = UPPER(?)
           `,
-          args: [statusNum, completedAt, updatedAt, orderId],
+          args: [statusNum, assignedDriverId, completedAt, updatedAt, orderId],
         });
 
     if (result.rowsAffected === 0) {
@@ -55,6 +72,7 @@ export default async function handler(req, res) {
       current_status: statusNum,
       status: statusNum,
       staff_id: staffId,
+      driver_id: assignedDriverId,
       updated_at: updatedAt,
       completed_at: completedAt,
     });
