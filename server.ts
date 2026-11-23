@@ -183,15 +183,28 @@ async function ensureSchemaAndSeed() {
     )
   `);
 
+  // Always ensure the 'unassigned' sentinel row exists for pending orders / FK safety
   await db.execute(`
     INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode)
-    VALUES
-      ('unassigned', 'Pending Dispatch', 'Unassigned', '', '', 'PENDING', 'unassigned', '123456'),
-      ('staff-dong-hao', 'Dong Hao', 'Senior Care Companion', '+60 12-345 6789', 'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20612', 'donghao', '123456'),
-      ('staff-yenchi', 'Yenchi', 'Care Companion', '+60 12-678 9012', 'https://ui-avatars.com/api/?name=Yenchi&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20705', 'yenchi', '123456'),
-      ('staff-mei-ling', 'Mei Ling Tan', 'Senior Care Companion', '+60 12-456 7890', 'https://ui-avatars.com/api/?name=Mei+Ling+Tan&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20489', 'meiling', '123456'),
-      ('staff-amirul', 'Amirul Hakim', 'Care Companion', '+60 12-890 1234', 'https://ui-avatars.com/api/?name=Amirul+Hakim&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20514', 'amirul', '123456')
+    VALUES ('unassigned', 'Pending Dispatch', 'Unassigned', '', '', 'PENDING', 'unassigned', '123456')
   `);
+
+  // Only seed default staff if no real staff members exist yet (brand new / empty DB)
+  const staffCountResult = await db.execute(
+    `SELECT COUNT(*) AS count FROM staff WHERE id != 'unassigned'`
+  );
+  const staffCount = Number(staffCountResult.rows[0]?.count ?? 0);
+
+  if (staffCount === 0) {
+    await db.execute(`
+      INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode)
+      VALUES
+        ('staff-dong-hao', 'Dong Hao', 'Senior Care Companion', '+60 12-345 6789', 'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20612', 'donghao', '123456'),
+        ('staff-yenchi', 'Yenchi', 'Care Companion', '+60 12-678 9012', 'https://ui-avatars.com/api/?name=Yenchi&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20705', 'yenchi', '123456'),
+        ('staff-mei-ling', 'Mei Ling Tan', 'Senior Care Companion', '+60 12-456 7890', 'https://ui-avatars.com/api/?name=Mei+Ling+Tan&background=047857&color=ffffff&bold=true', 'SJAM-CPR-20489', 'meiling', '123456'),
+        ('staff-amirul', 'Amirul Hakim', 'Care Companion', '+60 12-890 1234', 'https://ui-avatars.com/api/?name=Amirul+Hakim&background=0f766e&color=ffffff&bold=true', 'SJAM-CPR-20514', 'amirul', '123456')
+    `);
+  }
 
   const existingStaff = await db.execute(`SELECT id, name, login_id, passcode FROM staff`);
   for (const row of existingStaff.rows) {
@@ -212,19 +225,33 @@ async function ensureSchemaAndSeed() {
     }
   }
 
-  const now = new Date().toISOString();
-  await db.execute({
-    sql: `
-      INSERT OR IGNORE INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
-      VALUES
-        ('ECE-8421', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', 'unassigned', 1, ?),
-        ('ECE-8425', 'En. Ahmad Zaki', 'Hospital Putrajaya', '10:30 AM', 'unassigned', 1, ?),
-        ('ECE-8430', 'Mdm. Lim Poh Choo', 'UMMC', '11:15 AM', 'unassigned', 1, ?),
-        ('ECE-842190', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', 'staff-mei-ling', 3, ?),
-        ('ECE-842205', 'En. Razak Bin Osman', 'Hospital Putrajaya', '08:30 AM', 'staff-amirul', 2, ?)
-    `,
-    args: [now, now, now, now, now],
-  });
+  // Only seed default orders if the orders table is completely empty
+  const ordersCountResult = await db.execute(`SELECT COUNT(*) AS count FROM orders`);
+  const ordersCount = Number(ordersCountResult.rows[0]?.count ?? 0);
+
+  if (ordersCount === 0) {
+    const existingIds = new Set(existingStaff.rows.map((r) => String(r.id)));
+    const meiLingStaffId = existingIds.has('staff-mei-ling')
+      ? 'staff-mei-ling'
+      : 'unassigned';
+    const amirulStaffId = existingIds.has('staff-amirul')
+      ? 'staff-amirul'
+      : 'unassigned';
+
+    const now = new Date().toISOString();
+    await db.execute({
+      sql: `
+        INSERT OR IGNORE INTO orders (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at)
+        VALUES
+          ('ECE-8421', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', 'unassigned', 1, ?),
+          ('ECE-8425', 'En. Ahmad Zaki', 'Hospital Putrajaya', '10:30 AM', 'unassigned', 1, ?),
+          ('ECE-8430', 'Mdm. Lim Poh Choo', 'UMMC', '11:15 AM', 'unassigned', 1, ?),
+          ('ECE-842190', 'Mdm. Tan Siew Lan', 'Hospital Serdang', '09:00 AM', ?, 3, ?),
+          ('ECE-842205', 'En. Razak Bin Osman', 'Hospital Putrajaya', '08:30 AM', ?, 2, ?)
+      `,
+      args: [now, now, now, meiLingStaffId, now, amirulStaffId, now],
+    });
+  }
 
   await db.execute(`
     DELETE FROM orders WHERE order_id IN ('ECE-842318', 'ECE-842324')
