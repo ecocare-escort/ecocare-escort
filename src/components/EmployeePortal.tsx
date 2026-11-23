@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Upload,
   User,
+  Users,
 } from 'lucide-react';
 
 interface StaffProfile {
@@ -33,91 +34,7 @@ interface OrderRecord {
   updated_at: string;
 }
 
-interface MockCredentialAccount {
-  password: string;
-  staff: StaffProfile;
-}
-
-const DEFAULT_PENDING_ORDERS: OrderRecord[] = [
-  {
-    order_id: 'ECE-8421',
-    client_name: 'Mdm. Tan Siew Lan',
-    hospital_name: 'Hospital Serdang',
-    pickup_time: '09:00 AM',
-    staff_id: 'unassigned',
-    current_status: 1,
-    updated_at: new Date().toISOString(),
-  },
-  {
-    order_id: 'ECE-8425',
-    client_name: 'En. Ahmad Zaki',
-    hospital_name: 'Hospital Putrajaya',
-    pickup_time: '10:30 AM',
-    staff_id: 'unassigned',
-    current_status: 1,
-    updated_at: new Date().toISOString(),
-  },
-  {
-    order_id: 'ECE-8430',
-    client_name: 'Mdm. Lim Poh Choo',
-    hospital_name: 'UMMC',
-    pickup_time: '11:15 AM',
-    staff_id: 'unassigned',
-    current_status: 1,
-    updated_at: new Date().toISOString(),
-  },
-];
-
-const STAFF_ACCOUNTS: Record<string, MockCredentialAccount> = {
-  donghao: {
-    password: '123456',
-    staff: {
-      id: 'staff-dong-hao',
-      name: 'Dong Hao',
-      role: 'Senior Care Companion',
-      phone: '+60 12-345 6789',
-      photo_url:
-        'https://ui-avatars.com/api/?name=Dong+Hao&background=047857&color=ffffff&bold=true',
-      cpr_certificate_id: 'SJAM-CPR-20612',
-    },
-  },
-  yenchi: {
-    password: '123456',
-    staff: {
-      id: 'staff-yenchi',
-      name: 'Yenchi',
-      role: 'Care Companion',
-      phone: '+60 12-678 9012',
-      photo_url:
-        'https://ui-avatars.com/api/?name=Yenchi&background=0f766e&color=ffffff&bold=true',
-      cpr_certificate_id: 'SJAM-CPR-20705',
-    },
-  },
-  meiling: {
-    password: '123456',
-    staff: {
-      id: 'staff-mei-ling',
-      name: 'Mei Ling Tan',
-      role: 'Senior Care Companion',
-      phone: '+60 12-456 7890',
-      photo_url:
-        'https://ui-avatars.com/api/?name=Mei+Ling+Tan&background=047857&color=ffffff&bold=true',
-      cpr_certificate_id: 'SJAM-CPR-20489',
-    },
-  },
-  amirul: {
-    password: '123456',
-    staff: {
-      id: 'staff-amirul',
-      name: 'Amirul Hakim',
-      role: 'Care Companion',
-      phone: '+60 12-890 1234',
-      photo_url:
-        'https://ui-avatars.com/api/?name=Amirul+Hakim&background=0f766e&color=ffffff&bold=true',
-      cpr_certificate_id: 'SJAM-CPR-20514',
-    },
-  },
-};
+const DEFAULT_STAFF_PASSCODE = '123456';
 
 const STATUS_BUTTONS = [
   { status: 1, label: 'Assigned' },
@@ -134,24 +51,25 @@ function formatPendingOptionLabel(order: OrderRecord): string {
 
 interface EmployeePortalProps {
   onOpenClientTracker: (orderId: string) => void;
+  onOpenAdminPortal?: () => void;
   onBackToHome: () => void;
 }
 
 export function EmployeePortal({
   onOpenClientTracker,
+  onOpenAdminPortal,
   onBackToHome,
 }: EmployeePortalProps) {
-  const [username, setUsername] = useState<string>('');
+  const [staffDirectory, setStaffDirectory] = useState<StaffProfile[]>([]);
+  const [loadingStaffDirectory, setLoadingStaffDirectory] = useState<boolean>(true);
+  const [staffDirectoryError, setStaffDirectoryError] = useState<string | null>(null);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [loggedInStaff, setLoggedInStaff] = useState<StaffProfile | null>(null);
-  const [pendingOrders, setPendingOrders] = useState<OrderRecord[]>(
-    DEFAULT_PENDING_ORDERS
-  );
-  const [selectedPendingId, setSelectedPendingId] = useState<string>(
-    DEFAULT_PENDING_ORDERS[0].order_id
-  );
+  const [pendingOrders, setPendingOrders] = useState<OrderRecord[]>([]);
+  const [selectedPendingId, setSelectedPendingId] = useState<string>('');
   const [activeOrder, setActiveOrder] = useState<OrderRecord | null>(null);
 
   const [loadingDashboard, setLoadingDashboard] = useState<boolean>(false);
@@ -178,7 +96,32 @@ export function EmployeePortal({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingObjectUrlRef = useRef<string | null>(null);
 
+  const fetchStaffDirectory = async () => {
+    setLoadingStaffDirectory(true);
+    setStaffDirectoryError(null);
+    try {
+      const response = await fetch('/api/staff');
+      const rawText = await response.text();
+      const data = rawText ? JSON.parse(rawText) : null;
+      if (!response.ok || !Array.isArray(data?.staff)) {
+        throw new Error(data?.error || 'Unable to load staff directory.');
+      }
+      const list = data.staff as StaffProfile[];
+      setStaffDirectory(list);
+      setSelectedStaffId((prev) =>
+        list.some((m) => m.id === prev) ? prev : list[0]?.id ?? ''
+      );
+    } catch (err) {
+      setStaffDirectoryError(
+        err instanceof Error ? err.message : 'Unable to fetch staff list from Turso.'
+      );
+    } finally {
+      setLoadingStaffDirectory(false);
+    }
+  };
+
   useEffect(() => {
+    fetchStaffDirectory();
     return () => {
       if (toastTimerRef.current !== null) {
         window.clearTimeout(toastTimerRef.current);
@@ -186,23 +129,31 @@ export function EmployeePortal({
     };
   }, []);
 
-  const loadDashboardData = async (account: MockCredentialAccount) => {
+  const loadDashboardData = async (staff: StaffProfile) => {
     setLoadingDashboard(true);
     setPhotoFailed(false);
     try {
       const [staffOrdersRes, pendingRes] = await Promise.all([
-        fetch(`/api/orders?staff_id=${encodeURIComponent(account.staff.id)}`),
+        fetch(`/api/orders?staff_id=${encodeURIComponent(staff.id)}`),
         fetch('/api/pending-orders'),
       ]);
+
+      if (staffOrdersRes.status === 404) {
+        setLoggedInStaff(null);
+        setActiveOrder(null);
+        setAuthError('Your staff profile was removed. Please select an active profile.');
+        await fetchStaffDirectory();
+        return;
+      }
 
       if (staffOrdersRes.ok) {
         const staffData = await staffOrdersRes.json();
         if (staffData.staff) {
           setLoggedInStaff({
-            ...account.staff,
+            ...staff,
             ...staffData.staff,
-            phone: staffData.staff.phone || account.staff.phone,
-            photo_url: staffData.staff.photo_url || account.staff.photo_url,
+            phone: staffData.staff.phone || staff.phone,
+            photo_url: staffData.staff.photo_url || staff.photo_url,
           });
         }
         setActiveOrder((staffData.activeOrder as OrderRecord | null) ?? null);
@@ -211,17 +162,15 @@ export function EmployeePortal({
       if (pendingRes.ok) {
         const pendingData = await pendingRes.json();
         const dbPending = (pendingData.pendingOrders || []) as OrderRecord[];
-        const nextPending =
-          dbPending.length > 0 ? dbPending : DEFAULT_PENDING_ORDERS;
-        setPendingOrders(nextPending);
+        setPendingOrders(dbPending);
         setSelectedPendingId((prev) =>
-          nextPending.some((o) => o.order_id === prev)
+          dbPending.some((o) => o.order_id === prev)
             ? prev
-            : nextPending[0]?.order_id ?? ''
+            : dbPending[0]?.order_id ?? ''
         );
       }
     } catch {
-      // Keep local fallback state cleanly if offline
+      // Keep current state cleanly if offline
     } finally {
       setLoadingDashboard(false);
     }
@@ -232,29 +181,32 @@ export function EmployeePortal({
     setAuthError(null);
     setFeedback(null);
 
-    const normalizedUsername = username.trim().toLowerCase();
-    const account = STAFF_ACCOUNTS[normalizedUsername];
-
-    if (!account || password !== account.password) {
-      setAuthError('Invalid Staff ID or Password.');
+    const chosenStaff = staffDirectory.find((m) => m.id === selectedStaffId);
+    if (!chosenStaff) {
+      setAuthError('Please select an active staff profile.');
       return;
     }
 
-    setLoggedInStaff(account.staff);
+    if (password !== DEFAULT_STAFF_PASSCODE) {
+      setAuthError('Invalid Staff Password.');
+      return;
+    }
+
+    setLoggedInStaff(chosenStaff);
     setActiveOrder(null);
-    await loadDashboardData(account);
+    await loadDashboardData(chosenStaff);
   };
 
   const handleLogout = () => {
     setLoggedInStaff(null);
     setActiveOrder(null);
-    setUsername('');
     setPassword('');
     setAuthError(null);
     setFeedback(null);
     setPhotoFailed(false);
     setIsEditingProfile(false);
     setProfileError(null);
+    fetchStaffDirectory();
   };
 
   const handleStartEditProfile = () => {
@@ -575,64 +527,100 @@ export function EmployeePortal({
             <span>Back to Home</span>
           </button>
 
-          {loggedInStaff && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
-            >
-              <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Log Out</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {onOpenAdminPortal && (
+              <button
+                type="button"
+                onClick={onOpenAdminPortal}
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:border-emerald-700 hover:text-emerald-800 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+              >
+                <Users className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+                <span>Admin Portal</span>
+              </button>
+            )}
+
+            {loggedInStaff && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+              >
+                <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Log Out</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Manual Username / Password Login View */}
+        {/* Dynamic Staff Selection & Password Login View */}
         {!loggedInStaff ? (
           <div className="rounded-xl border border-slate-200 bg-white p-6">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-              <Lock className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
-              <span>Internal Companion Access</span>
+            <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-500">
+              <span className="inline-flex items-center gap-2">
+                <Lock className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+                <span>Internal Companion Access</span>
+              </span>
+              <button
+                type="button"
+                onClick={fetchStaffDirectory}
+                disabled={loadingStaffDirectory}
+                aria-label="Refresh staff list"
+                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              >
+                <RefreshCw
+                  className={`h-3 w-3 ${loadingStaffDirectory ? 'animate-spin' : ''}`}
+                  aria-hidden="true"
+                />
+                <span>Sync</span>
+              </button>
             </div>
 
             <h1 className="mt-2 font-display text-xl font-bold tracking-tight text-slate-900">
               Staff Login
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              Enter your assigned EcoCare Staff ID and password to claim an escort task.
+              Select your EcoCare companion profile from Turso and enter your passcode to claim an escort task.
             </p>
 
-            {authError && (
+            {(authError || staffDirectoryError) && (
               <div
                 role="alert"
                 className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700"
               >
-                {authError}
+                {authError || staffDirectoryError}
               </div>
             )}
 
             <form onSubmit={handleLoginSubmit} className="mt-5 space-y-4">
               <div>
                 <label
-                  htmlFor="staff-username"
+                  htmlFor="staff-profile-select"
                   className="block text-sm font-medium text-slate-800"
                 >
-                  Username
+                  Select Staff Member
                 </label>
-                <input
-                  id="staff-username"
-                  type="text"
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  value={username}
+                <select
+                  id="staff-profile-select"
+                  value={selectedStaffId}
+                  disabled={loadingStaffDirectory || staffDirectory.length === 0}
                   onChange={(e) => {
-                    setUsername(e.target.value);
+                    setSelectedStaffId(e.target.value);
                     if (authError) setAuthError(null);
                   }}
-                  placeholder="Enter staff username"
-                  className="mt-1.5 min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                />
+                  className="mt-1.5 min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20 disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  {loadingStaffDirectory ? (
+                    <option value="">Loading staff directory...</option>
+                  ) : staffDirectory.length === 0 ? (
+                    <option value="">No staff profiles found — add one in Admin Portal</option>
+                  ) : (
+                    staffDirectory.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} — {member.role}
+                      </option>
+                    ))
+                  )}
+                </select>
               </div>
 
               <div>
@@ -654,11 +642,18 @@ export function EmployeePortal({
                   placeholder="Enter password"
                   className="mt-1.5 min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                 />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Default MVP staff password:{' '}
+                  <span className="font-mono font-medium text-slate-700">
+                    123456
+                  </span>
+                </p>
               </div>
 
               <button
                 type="submit"
-                className="min-h-[48px] w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
+                disabled={loadingStaffDirectory || staffDirectory.length === 0}
+                className="min-h-[48px] w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-50 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
               >
                 Sign In
               </button>
@@ -908,12 +903,7 @@ export function EmployeePortal({
                   <button
                     type="button"
                     aria-label="Refresh pending orders"
-                    onClick={() => {
-                      const matched = Object.values(STAFF_ACCOUNTS).find(
-                        (a) => a.staff.id === loggedInStaff.id
-                      );
-                      if (matched) loadDashboardData(matched);
-                    }}
+                    onClick={() => loadDashboardData(loggedInStaff)}
                     disabled={loadingDashboard}
                     className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
                   >

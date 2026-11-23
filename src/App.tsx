@@ -4,6 +4,7 @@ import { HomeView, type AppView } from './components/HomeView';
 import { ServicesView } from './components/ServicesView';
 import { FAQView } from './components/FAQView';
 import { EmployeePortal } from './components/EmployeePortal';
+import { AdminPortal } from './components/AdminPortal';
 import {
   BookingSection,
   type BookingPrefill,
@@ -25,6 +26,9 @@ function parseRoute(): RouteState {
   const path = window.location.pathname.toLowerCase();
   const hash = window.location.hash.replace('#', '').toLowerCase();
 
+  if (path === '/admin' || hash === 'admin') {
+    return { view: 'admin' };
+  }
   if (path === '/portal' || hash === 'portal') {
     return { view: 'portal' };
   }
@@ -282,6 +286,14 @@ export default function App() {
         {activeView === 'portal' && (
           <EmployeePortal
             onOpenClientTracker={(id) => navigateTo('tracker', id)}
+            onOpenAdminPortal={() => navigateTo('admin')}
+            onBackToHome={() => navigateTo('home')}
+          />
+        )}
+
+        {activeView === 'admin' && (
+          <AdminPortal
+            onBackToPortal={() => navigateTo('portal')}
             onBackToHome={() => navigateTo('home')}
           />
         )}

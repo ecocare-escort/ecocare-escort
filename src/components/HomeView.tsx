@@ -6,7 +6,7 @@ import { HERO_HIGHLIGHTS } from '../data/ecocareData';
 import { ResilientImage } from './ResilientImage';
 import { CustomerReviews } from './CustomerReviews';
 
-export type AppView = 'home' | 'services' | 'book' | 'tracker' | 'faq' | 'portal';
+export type AppView = 'home' | 'services' | 'book' | 'tracker' | 'faq' | 'portal' | 'admin';
 
 interface HomeViewProps {
   onNavigate: (view: AppView) => void;

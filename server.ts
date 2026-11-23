@@ -305,8 +305,24 @@ async function startServer() {
     }
   });
 
-  app.get('/api/staff', async (_req: Request, res: Response) => {
+  const isAuthorizedAdmin = (req: Request): boolean => {
+    const expected = (process.env.ADMIN_PASSCODE || 'ecocare2026').trim();
+    const headerVal = req.headers['x-admin-passcode'];
+    const provided = Array.isArray(headerVal)
+      ? String(headerVal[0] || '').trim()
+      : typeof headerVal === 'string'
+        ? headerVal.trim()
+        : '';
+    return provided.length > 0 && provided === expected;
+  };
+
+  app.get('/api/staff', async (req: Request, res: Response) => {
     try {
+      if (req.query?.verify === '1' && !isAuthorizedAdmin(req)) {
+        res.status(401).json({ error: 'Invalid admin passcode.' });
+        return;
+      }
+
       const result = await db.execute(`
         SELECT id, name, role, phone, photo_url, cpr_certificate_id
         FROM staff
@@ -323,6 +339,108 @@ async function startServer() {
     } catch (error) {
       console.error('Failed to list staff:', error);
       res.status(500).json({ error: 'Failed to load staff directory.' });
+    }
+  });
+
+  app.post('/api/staff', async (req: Request, res: Response) => {
+    try {
+      if (!isAuthorizedAdmin(req)) {
+        res.status(401).json({ error: 'Unauthorized. Valid admin passcode required.' });
+        return;
+      }
+
+      const body = req.body || {};
+      const name = String(body.name ?? '').trim();
+      const role = String(body.role ?? '').trim() || 'Care Companion';
+      const phone = String(body.phone ?? '').trim();
+      const cprCertificateId = String(body.cpr_certificate_id ?? '').trim();
+
+      if (!name || !phone || !cprCertificateId) {
+        res.status(400).json({
+          error: 'Full Name, Phone, and CPR Certificate ID are required.',
+        });
+        return;
+      }
+
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 24);
+      const staffId = `staff-${slug || 'companion'}-${Math.floor(100 + Math.random() * 900)}`;
+      const photoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        name
+      )}&background=047857&color=ffffff&bold=true`;
+
+      await db.execute({
+        sql: `
+          INSERT INTO staff (id, name, role, phone, photo_url, cpr_certificate_id)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        args: [staffId, name, role, phone, photoUrl, cprCertificateId],
+      });
+
+      res.status(201).json({
+        ok: true,
+        staff: {
+          id: staffId,
+          name,
+          role,
+          phone,
+          photo_url: photoUrl,
+          cpr_certificate_id: cprCertificateId,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to add staff member:', error);
+      res.status(500).json({ error: 'Failed to add staff member.' });
+    }
+  });
+
+  app.delete('/api/staff', async (req: Request, res: Response) => {
+    try {
+      if (!isAuthorizedAdmin(req)) {
+        res.status(401).json({ error: 'Unauthorized. Valid admin passcode required.' });
+        return;
+      }
+
+      const queryId =
+        typeof req.query?.id === 'string' ? req.query.id.trim() : '';
+      const bodyId =
+        typeof req.body?.id === 'string' ? req.body.id.trim() : '';
+      const staffId = queryId || bodyId;
+
+      if (!staffId) {
+        res.status(400).json({ error: 'Missing required staff id.' });
+        return;
+      }
+
+      if (staffId === 'unassigned') {
+        res.status(400).json({
+          error: "Cannot delete the system 'unassigned' dispatch record.",
+        });
+        return;
+      }
+
+      await db.execute({
+        sql: `UPDATE orders SET staff_id = 'unassigned' WHERE staff_id = ?`,
+        args: [staffId],
+      });
+
+      const deleteResult = await db.execute({
+        sql: `DELETE FROM staff WHERE id = ?`,
+        args: [staffId],
+      });
+
+      if (deleteResult.rowsAffected === 0) {
+        res.status(404).json({ error: `Staff member "${staffId}" not found.` });
+        return;
+      }
+
+      res.status(200).json({ ok: true, deletedId: staffId });
+    } catch (error) {
+      console.error('Failed to delete staff member:', error);
+      res.status(500).json({ error: 'Failed to remove staff member.' });
     }
   });
 

@@ -88,35 +88,6 @@ export async function ensureSchemaAndSeed() {
         await db.execute(`ALTER TABLE orders ADD COLUMN completed_at TEXT`);
       }
 
-      const ordersTableInfo = await db.execute(
-        `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'`
-      );
-      const ordersSql = String(ordersTableInfo.rows[0]?.sql ?? '');
-      if (ordersSql.includes('BETWEEN 1 AND 5')) {
-        await db.execute('PRAGMA foreign_keys = OFF');
-        await db.execute(`
-          CREATE TABLE orders_migrated (
-            order_id TEXT PRIMARY KEY,
-            client_name TEXT NOT NULL,
-            hospital_name TEXT,
-            pickup_time TEXT,
-            staff_id TEXT NOT NULL,
-            current_status INTEGER NOT NULL DEFAULT 1 CHECK (current_status BETWEEN 1 AND 6),
-            updated_at TEXT NOT NULL,
-            completed_at TEXT,
-            FOREIGN KEY (staff_id) REFERENCES staff(id)
-          )
-        `);
-        await db.execute(`
-          INSERT INTO orders_migrated (order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at, completed_at)
-          SELECT order_id, client_name, hospital_name, pickup_time, staff_id, current_status, updated_at, completed_at
-          FROM orders
-        `);
-        await db.execute('DROP TABLE orders');
-        await db.execute('ALTER TABLE orders_migrated RENAME TO orders');
-        await db.execute('PRAGMA foreign_keys = ON');
-      }
-
       await db.execute(`
         INSERT OR IGNORE INTO staff (id, name, role, phone, photo_url, cpr_certificate_id)
         VALUES
