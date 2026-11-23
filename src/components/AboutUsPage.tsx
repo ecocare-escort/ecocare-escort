@@ -37,7 +37,7 @@ const OPERATIONS_HUB = {
   hours: 'Monday – Saturday, 7:00 AM – 6:00 PM',
   whatsappDisplay: '+60 12-345 6789',
   whatsappHref: 'https://wa.me/60123456789',
-  email: 'care@ecocareescorts.my',
+  email: 'ecocare.escort@gmail.com',
   mapsHref:
     'https://maps.google.com/?q=Jalan+SP,+Taman+Serdang+Perdana,+Seri+Kembangan,+Selangor',
 };
