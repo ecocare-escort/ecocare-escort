@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Check, MapPin } from 'lucide-react';
+import { ArrowRight, Check, Clock, MapPin, Navigation } from 'lucide-react';
 import {
   ADDON_ITEMS,
   JOURNEY_PHASES,
@@ -151,6 +151,71 @@ export function ServicesView({
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Distance & Overtime Policy Bar */}
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-6 md:p-7">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+              <h3 className="font-display text-base font-semibold text-slate-900">
+                Distance &amp; Overtime Policy
+              </h3>
+              <span className="text-xs text-slate-500">
+                Calculated from our Serdang operating hub
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+                <div className="flex items-start gap-2.5">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
+                  <div>
+                    <p className="font-display text-sm font-semibold text-slate-900">
+                      Serdang Area (0 – 10 km)
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      RM 0 mileage surcharge
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono text-sm font-semibold tabular-nums text-emerald-700 shrink-0">
+                  Free
+                </span>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                <div className="flex items-start gap-2.5">
+                  <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
+                  <div>
+                    <p className="font-display text-sm font-semibold text-slate-900">
+                      Other Klang Valley Areas (&gt; 10 km)
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Charged only on km beyond 10 km
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono text-sm font-semibold tabular-nums text-emerald-700 shrink-0">
+                  +RM 2.00 / km
+                </span>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                <div className="flex items-start gap-2.5">
+                  <Clock className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
+                  <div>
+                    <p className="font-display text-sm font-semibold text-slate-900">
+                      Overtime (&gt; 4 hours)
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Extended clinic or pharmacy wait
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono text-sm font-semibold tabular-nums text-slate-900 shrink-0">
+                  +RM 30 / hour
+                </span>
+              </div>
             </div>
           </div>
         </div>

@@ -20,7 +20,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
       const result = await db.execute(
-        'SELECT id, patient_name, hospital_name, tier_id, addons_json, total_price, appointment_date, pickup_time, created_at FROM bookings ORDER BY created_at DESC LIMIT 20'
+        'SELECT id, patient_name, hospital_name, tier_id, addons_json, pickup_zone, distance_km, mileage_fee, total_price, appointment_date, pickup_time, created_at FROM bookings ORDER BY created_at DESC LIMIT 20'
       );
       return res.status(200).json({ ok: true, bookings: result.rows });
     }
@@ -48,17 +48,27 @@ export default async function handler(req, res) {
     const needsWheelchair = Boolean(body.needsWheelchair ?? body.needs_wheelchair);
     const needsFastingMeal = Boolean(body.needsFastingMeal ?? body.needs_fasting_meal);
 
+    const rawPickupZone = String(body.pickupZone ?? body.pickup_zone ?? 'serdang').trim().toLowerCase();
+    const pickupZone = rawPickupZone === 'other' ? 'other' : 'serdang';
+    const parsedDistance = Number(body.distanceKm ?? body.distance_km ?? (pickupZone === 'other' ? 15 : 0));
+    const distanceKm =
+      pickupZone === 'other'
+        ? Math.max(11, Math.round(Number.isFinite(parsedDistance) && parsedDistance > 0 ? parsedDistance : 15))
+        : 0;
+    const extraKm = pickupZone === 'other' ? Math.max(0, distanceKm - 10) : 0;
+    const mileageFee = extraKm * 2;
+
     if (!patientName || !hospitalName) {
       return res.status(400).json({
         error: 'Patient or caregiver name and hospital name are required.',
       });
     }
 
-    const basePrice = tierId === 'tier2' ? 150 : 100;
+    const basePrice = tierId === 'tier2' ? 200 : 150;
     const tierLabel =
       tierId === 'tier2'
-        ? 'Premium Proxy Package - RM 150'
-        : 'Basic Care Package - RM 100';
+        ? 'Premium Proxy Package - RM 200'
+        : 'Basic Care Package - RM 150';
 
     const addons = [];
     if (needsWheelchair) {
@@ -69,7 +79,7 @@ export default async function handler(req, res) {
     }
 
     const addonsTotal = addons.reduce((sum, item) => sum + item.price, 0);
-    const totalPrice = basePrice + addonsTotal;
+    const totalPrice = basePrice + addonsTotal + mileageFee;
 
     const orderId = await generateUniqueOrderId();
     const createdAt = new Date().toISOString();
@@ -78,19 +88,24 @@ export default async function handler(req, res) {
         ? addons.map((a) => `${a.label} (+RM ${a.price})`).join(', ')
         : 'None';
 
+    const mileageSummary =
+      pickupZone === 'other'
+        ? `Other Klang Valley (${distanceKm} km, ${extraKm} km x RM 2 = +RM ${mileageFee})`
+        : 'Serdang Free Zone (<= 10 km, RM 0)';
+
     const dateText = String(body.appointmentDate ?? body.appointment_date ?? '').trim() || 'TBD';
     const timeText = String(body.pickupTime ?? body.pickup_time ?? '').trim() || 'TBD';
     const notesText = String(body.notes ?? '').trim();
 
-    const whatsappMessage = `[EcoCare Escorts Booking Confirmation] Order ${orderId} | Name: ${patientName} | Hospital: ${hospitalName} | Schedule: ${dateText} at ${timeText} | Package: ${tierLabel} | Add-ons: ${addonSummary} | Total Price: RM ${totalPrice}. Our Serdang student care team will confirm your companion details via WhatsApp (+60 12-345 6789) within 30 minutes.`;
+    const whatsappMessage = `[EcoCare Escorts Booking Confirmation] Order ${orderId} | Name: ${patientName} | Hospital: ${hospitalName} | Schedule: ${dateText} at ${timeText} | Package: ${tierLabel} | Add-ons: ${addonSummary} | Mileage: ${mileageSummary} | Total Price: RM ${totalPrice}. Our Serdang student care team will confirm your companion details via WhatsApp (+60 12-345 6789) within 30 minutes.`;
 
     await db.execute({
       sql: `
         INSERT INTO bookings (
           id, patient_name, hospital_name, email, phone,
-          tier_id, tier_label, base_price, addons_json, total_price,
+          tier_id, tier_label, base_price, addons_json, pickup_zone, distance_km, mileage_fee, total_price,
           appointment_date, pickup_time, notes, whatsapp_message, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
         orderId,
@@ -102,6 +117,9 @@ export default async function handler(req, res) {
         tierLabel,
         basePrice,
         JSON.stringify(addons),
+        pickupZone,
+        distanceKm,
+        mileageFee,
         totalPrice,
         dateText,
         timeText,
@@ -127,6 +145,12 @@ export default async function handler(req, res) {
       order_id: orderId,
       bookingId: orderId,
       driver_id: assignedDriverId,
+      basePrice,
+      addonsTotal,
+      pickupZone,
+      distanceKm,
+      extraKm,
+      mileageFee,
       totalPrice,
       addons,
       storageTarget: isTursoConfigured ? 'turso' : 'local-libsql',

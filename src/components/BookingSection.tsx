@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Copy,
   Mail,
+  MapPin,
   MessageSquare,
   PhoneCall,
 } from 'lucide-react';
@@ -34,12 +35,17 @@ interface FormErrors {
   submit?: string;
 }
 
+type PickupZone = 'serdang' | 'other';
+
 interface BookingConfirmation {
   bookingId: string;
   patientName: string;
   hospitalName: string;
   tierLabel: string;
   addons: { id: string; label: string; price: number }[];
+  pickupZone: PickupZone;
+  distanceKm: number;
+  mileageFee: number;
   totalPrice: number;
   whatsappMessage: string;
   storageTarget: string;
@@ -55,18 +61,27 @@ const TIER_OPTIONS: {
     id: 'tier1',
     name: 'Basic Care Package',
     description: 'Door-to-door transport, hospital navigation, basic WhatsApp text updates · Up to 4 hours',
-    price: 100,
+    price: 150,
   },
   {
     id: 'tier2',
     name: 'Premium Proxy Package',
     description: 'Tier 1 + In-room consultation companion, structured medical report, multimedia live updates · Up to 4 hours',
-    price: 150,
+    price: 200,
   },
 ];
 
 const WHEELCHAIR_FEE = 15;
 const FASTING_MEAL_FEE = 10;
+const FREE_SERDANG_KM = 10;
+const EXTRA_KM_RATE = 2;
+
+const DISTANCE_PRESETS: { label: string; km: number }[] = [
+  { label: 'Puchong (16 km)', km: 16 },
+  { label: 'Cheras (18 km)', km: 18 },
+  { label: 'KL City (22 km)', km: 22 },
+  { label: 'PJ / Subang (25 km)', km: 25 },
+];
 
 const ALL_HOSPITALS = KLANG_VALLEY_ZONES.flatMap((z) => z.hospitals);
 
@@ -79,6 +94,8 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
   const [selectedTier, setSelectedTier] = useState<PricingTier>('tier1');
   const [needsWheelchair, setNeedsWheelchair] = useState<boolean>(false);
   const [needsFastingMeal, setNeedsFastingMeal] = useState<boolean>(false);
+  const [pickupZone, setPickupZone] = useState<PickupZone>('serdang');
+  const [distanceInput, setDistanceInput] = useState<string>('15');
 
   // Form fields state
   const [patientOrCaregiverName, setPatientOrCaregiverName] = useState('');
@@ -99,11 +116,21 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
     setSelectedTier(prefill.tierId);
   }, [prefill]);
 
-  // Real-time Total Price calculation
-  const basePrice = selectedTier === 'tier2' ? 150 : 100;
+  // Real-time Total Price calculation (Option A: RM 150 / RM 200 + mileage beyond 10 km)
+  const activeTierInfo =
+    TIER_OPTIONS.find((t) => t.id === selectedTier) ?? TIER_OPTIONS[0];
+  const basePrice = activeTierInfo.price;
   const wheelchairAddon = needsWheelchair ? WHEELCHAIR_FEE : 0;
   const fastingMealAddon = needsFastingMeal ? FASTING_MEAL_FEE : 0;
-  const totalPrice = basePrice + wheelchairAddon + fastingMealAddon;
+  const parsedDistance = Number(distanceInput);
+  const effectiveDistanceKm =
+    pickupZone === 'other'
+      ? Math.max(11, Math.round(Number.isFinite(parsedDistance) && parsedDistance > 0 ? parsedDistance : 15))
+      : 0;
+  const extraKm =
+    pickupZone === 'other' ? Math.max(0, effectiveDistanceKm - FREE_SERDANG_KM) : 0;
+  const mileageFee = extraKm * EXTRA_KM_RATE;
+  const totalPrice = basePrice + wheelchairAddon + fastingMealAddon + mileageFee;
 
   const validate = (): FormErrors => {
     const nextErrors: FormErrors = {};
@@ -150,6 +177,8 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
           tierId: selectedTier,
           needsWheelchair,
           needsFastingMeal,
+          pickupZone,
+          distanceKm: pickupZone === 'other' ? effectiveDistanceKm : 0,
           appointmentDate,
           pickupTime,
           notes: notes.trim(),
@@ -163,6 +192,9 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
         order_id?: string;
         bookingId?: string;
         addons?: { id: string; label: string; price: number }[];
+        pickupZone?: PickupZone;
+        distanceKm?: number;
+        mileageFee?: number;
         totalPrice?: number;
         whatsappMessage?: string;
         storageTarget?: string;
@@ -196,16 +228,17 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
         );
       }
 
-      const activeTierInfo =
-        TIER_OPTIONS.find((t) => t.id === selectedTier) ?? TIER_OPTIONS[0];
       const confirmedOrderId = data.order_id || data.bookingId || '';
 
       setConfirmation({
         bookingId: confirmedOrderId,
         patientName: patientOrCaregiverName.trim(),
         hospitalName: facilityName.trim(),
-        tierLabel: `${activeTierInfo.name} - RM ${activeTierInfo.price}`,
+        tierLabel: `${activeTierInfo.name} — RM ${activeTierInfo.price}`,
         addons: data.addons || [],
+        pickupZone: data.pickupZone || pickupZone,
+        distanceKm: data.distanceKm ?? effectiveDistanceKm,
+        mileageFee: data.mileageFee ?? mileageFee,
         totalPrice: data.totalPrice ?? totalPrice,
         whatsappMessage: data.whatsappMessage || '',
         storageTarget: data.storageTarget || 'turso',
@@ -257,7 +290,7 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                     Transparent Flat-Rate Pricing
                   </h3>
                   <p className="mt-0.5 text-sm text-slate-600">
-                    Choose Basic Care (RM 100) or Premium Proxy (RM 150) for up to 4 hours of escort support with zero hidden fees.
+                    Choose Basic Care (RM 150) or Premium Proxy (RM 200) for up to 4 hours of escort support — plus free mileage within Serdang (&le; 10 km) and RM 2.00/km beyond 10 km for other Klang Valley areas.
                   </p>
                 </div>
               </div>
@@ -415,7 +448,7 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                         >
                           <div className="flex items-baseline justify-between gap-2">
                             <span className="font-display text-sm font-semibold text-slate-900">
-                              {tier.name}
+                              {tier.name} — RM {tier.price}
                             </span>
                             <span className="font-mono text-base font-semibold tabular-nums text-emerald-700 shrink-0">
                               RM {tier.price}
@@ -617,6 +650,143 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                     </div>
                   </div>
 
+                  {/* Pickup Location & Mileage Calculator (Option A) */}
+                  <div className="sm:col-span-2">
+                    <span className="block text-xs font-medium text-slate-700">
+                      Pickup Location &amp; Mileage Calculator
+                    </span>
+                    <div
+                      role="radiogroup"
+                      aria-label="Pickup Location Zone"
+                      className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2"
+                    >
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={pickupZone === 'serdang'}
+                        onClick={() => setPickupZone('serdang')}
+                        className={`flex items-start justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                          pickupZone === 'serdang'
+                            ? 'border-emerald-700 bg-emerald-50/70'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="flex items-start gap-2.5">
+                          <MapPin
+                            className={`mt-0.5 h-4 w-4 shrink-0 ${
+                              pickupZone === 'serdang' ? 'text-emerald-700' : 'text-slate-400'
+                            }`}
+                            aria-hidden="true"
+                          />
+                          <span>
+                            <span className="block text-sm font-medium text-slate-900">
+                              Serdang Area (&le; 10 km)
+                            </span>
+                            <span className="mt-0.5 block text-xs text-slate-500">
+                              Serdang Free Zone
+                            </span>
+                          </span>
+                        </span>
+                        <span className="font-mono text-xs font-semibold tabular-nums text-emerald-700 shrink-0">
+                          RM 0
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={pickupZone === 'other'}
+                        onClick={() => {
+                          setPickupZone('other');
+                          if (!distanceInput || Number(distanceInput) < 11) {
+                            setDistanceInput('15');
+                          }
+                        }}
+                        className={`flex items-start justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                          pickupZone === 'other'
+                            ? 'border-emerald-700 bg-emerald-50/70'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="flex items-start gap-2.5">
+                          <MapPin
+                            className={`mt-0.5 h-4 w-4 shrink-0 ${
+                              pickupZone === 'other' ? 'text-emerald-700' : 'text-slate-400'
+                            }`}
+                            aria-hidden="true"
+                          />
+                          <span>
+                            <span className="block text-sm font-medium text-slate-900">
+                              Other Klang Valley Area (&gt; 10 km)
+                            </span>
+                            <span className="mt-0.5 block text-xs text-slate-500">
+                              First 10 km free
+                            </span>
+                          </span>
+                        </span>
+                        <span className="font-mono text-xs font-semibold tabular-nums text-emerald-700 shrink-0">
+                          RM 2.00 / extra km
+                        </span>
+                      </button>
+                    </div>
+
+                    {pickupZone === 'other' && (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                          <div className="sm:max-w-xs flex-1">
+                            <label
+                              htmlFor="booking-distance-km"
+                              className="block text-xs font-medium text-slate-700"
+                            >
+                              Estimated Distance from Serdang Hub (km)
+                            </label>
+                            <input
+                              id="booking-distance-km"
+                              type="number"
+                              min={11}
+                              step={1}
+                              value={distanceInput}
+                              onChange={(e) => setDistanceInput(e.target.value)}
+                              onBlur={() =>
+                                setDistanceInput(String(effectiveDistanceKm))
+                              }
+                              className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm tabular-nums text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                            />
+                          </div>
+                          <p className="font-mono text-xs tabular-nums text-slate-600">
+                            {extraKm} extra km &times; RM {EXTRA_KM_RATE} ={' '}
+                            <span className="font-semibold text-emerald-700">
+                              +RM {mileageFee}
+                            </span>
+                          </p>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-medium text-slate-500">
+                            Quick presets:
+                          </span>
+                          {DISTANCE_PRESETS.map((preset) => {
+                            const activePreset = effectiveDistanceKm === preset.km;
+                            return (
+                              <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() => setDistanceInput(String(preset.km))}
+                                className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                                  activePreset
+                                    ? 'border-emerald-700 bg-emerald-50 text-emerald-800'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="sm:col-span-2">
                     <label
                       htmlFor="booking-notes"
@@ -644,12 +814,65 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                   </div>
                 )}
 
-                {/* Real-Time Total Price Bar & Submit Action */}
-                <div className="mt-6 flex flex-col gap-4 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="flex items-baseline gap-2.5">
-                      <span className="text-xs font-medium text-slate-600">
-                        Total Price
+                {/* Real-Time Price Breakdown Box & Submit Action */}
+                <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Real-Time Price Breakdown
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Up to 4 hours · Overtime &gt; 4 hrs: +RM 30/hr
+                    </span>
+                  </div>
+
+                  <dl className="mt-3 space-y-2 text-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-600">
+                        Base Package ({activeTierInfo.name})
+                      </dt>
+                      <dd className="font-mono font-semibold tabular-nums text-slate-900">
+                        RM {basePrice}
+                      </dd>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-600">Selected Add-ons</dt>
+                      <dd className="font-mono font-medium tabular-nums text-slate-800 text-right">
+                        {!needsWheelchair && !needsFastingMeal ? (
+                          <span className="text-slate-500">RM 0 (None)</span>
+                        ) : (
+                          <span>
+                            {[
+                              needsWheelchair ? `Wheelchair +RM ${WHEELCHAIR_FEE}` : null,
+                              needsFastingMeal ? `Meal Run +RM ${FASTING_MEAL_FEE}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-600">Mileage Surcharge</dt>
+                      <dd className="font-mono font-medium tabular-nums text-right">
+                        {pickupZone === 'serdang' ? (
+                          <span className="text-emerald-700">
+                            RM 0 — Serdang Free Zone
+                          </span>
+                        ) : (
+                          <span className="text-slate-900">
+                            +RM {mileageFee} ({extraKm} km &times; RM {EXTRA_KM_RATE})
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-4 flex flex-col gap-4 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <span className="block text-xs font-medium text-slate-600">
+                        Estimated Total
                       </span>
                       <span
                         data-testid="total-price"
@@ -658,20 +881,15 @@ export function BookingSection({ prefill, onOpenTracker }: BookingSectionProps) 
                         RM {totalPrice}
                       </span>
                     </div>
-                    <p className="mt-0.5 font-mono text-[11px] tabular-nums text-slate-500">
-                      Base RM {basePrice}
-                      {needsWheelchair ? ` + Wheelchair RM ${WHEELCHAIR_FEE}` : ''}
-                      {needsFastingMeal ? ` + Meal Run RM ${FASTING_MEAL_FEE}` : ''}
-                    </p>
-                  </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="rounded-lg bg-emerald-700 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
-                  >
-                    {isSubmitting ? 'Saving Booking...' : 'Confirm Booking & Generate WhatsApp Text'}
-                  </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="rounded-lg bg-emerald-700 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
+                    >
+                      {isSubmitting ? 'Saving Booking...' : 'Confirm Booking & Generate WhatsApp Text'}
+                    </button>
+                  </div>
                 </div>
               </form>
             )}

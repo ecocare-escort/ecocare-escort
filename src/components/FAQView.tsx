@@ -97,7 +97,7 @@ export function FAQView({ onNavigate }: FAQViewProps) {
                   Ready to schedule an escort?
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-600">
-                  Compare RM 100 and RM 150 packages or complete your booking directly.
+                  Compare RM 150 and RM 200 packages or complete your booking directly.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3 shrink-0">

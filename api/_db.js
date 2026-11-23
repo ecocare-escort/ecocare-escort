@@ -105,6 +105,9 @@ export async function ensureSchemaAndSeed() {
           tier_label TEXT NOT NULL,
           base_price INTEGER NOT NULL,
           addons_json TEXT NOT NULL,
+          pickup_zone TEXT DEFAULT 'serdang',
+          distance_km INTEGER DEFAULT 0,
+          mileage_fee INTEGER DEFAULT 0,
           total_price INTEGER NOT NULL,
           appointment_date TEXT,
           pickup_time TEXT,
@@ -140,6 +143,19 @@ export async function ensureSchemaAndSeed() {
         `ALTER TABLE orders ADD COLUMN driver_id TEXT`,
       ];
       for (const sql of orderAlterStatements) {
+        try {
+          await db.execute(sql);
+        } catch {
+          // Column already exists
+        }
+      }
+
+      const bookingAlterStatements = [
+        `ALTER TABLE bookings ADD COLUMN pickup_zone TEXT DEFAULT 'serdang'`,
+        `ALTER TABLE bookings ADD COLUMN distance_km INTEGER DEFAULT 0`,
+        `ALTER TABLE bookings ADD COLUMN mileage_fee INTEGER DEFAULT 0`,
+      ];
+      for (const sql of bookingAlterStatements) {
         try {
           await db.execute(sql);
         } catch {

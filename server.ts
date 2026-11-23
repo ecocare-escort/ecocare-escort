@@ -209,6 +209,9 @@ async function ensureSchemaAndSeed() {
       tier_label TEXT NOT NULL,
       base_price INTEGER NOT NULL,
       addons_json TEXT NOT NULL,
+      pickup_zone TEXT DEFAULT 'serdang',
+      distance_km INTEGER DEFAULT 0,
+      mileage_fee INTEGER DEFAULT 0,
       total_price INTEGER NOT NULL,
       appointment_date TEXT,
       pickup_time TEXT,
@@ -217,6 +220,18 @@ async function ensureSchemaAndSeed() {
       created_at TEXT NOT NULL
     )
   `);
+
+  for (const sql of [
+    `ALTER TABLE bookings ADD COLUMN pickup_zone TEXT DEFAULT 'serdang'`,
+    `ALTER TABLE bookings ADD COLUMN distance_km INTEGER DEFAULT 0`,
+    `ALTER TABLE bookings ADD COLUMN mileage_fee INTEGER DEFAULT 0`,
+  ]) {
+    try {
+      await db.execute(sql);
+    } catch {
+      // Column already exists
+    }
+  }
 
   // Always ensure the 'unassigned' sentinel row exists for pending orders / FK safety
   await db.execute(`
@@ -351,6 +366,8 @@ interface BookingPayload {
   tierId?: 'tier1' | 'tier2';
   needsWheelchair?: boolean;
   needsFastingMeal?: boolean;
+  pickupZone?: 'serdang' | 'other';
+  distanceKm?: number;
   appointmentDate?: string;
   pickupTime?: string;
   notes?: string;
@@ -371,6 +388,16 @@ async function startServer() {
       const needsWheelchair = Boolean(body.needsWheelchair);
       const needsFastingMeal = Boolean(body.needsFastingMeal);
 
+      const rawPickupZone = String(body.pickupZone || 'serdang').trim().toLowerCase();
+      const pickupZone = rawPickupZone === 'other' ? 'other' : 'serdang';
+      const parsedDistance = Number(body.distanceKm ?? (pickupZone === 'other' ? 15 : 0));
+      const distanceKm =
+        pickupZone === 'other'
+          ? Math.max(11, Math.round(Number.isFinite(parsedDistance) && parsedDistance > 0 ? parsedDistance : 15))
+          : 0;
+      const extraKm = pickupZone === 'other' ? Math.max(0, distanceKm - 10) : 0;
+      const mileageFee = extraKm * 2;
+
       if (!patientName || !hospitalName) {
         res.status(400).json({
           error: 'Patient or caregiver name and hospital name are required.',
@@ -378,11 +405,11 @@ async function startServer() {
         return;
       }
 
-      const basePrice = tierId === 'tier2' ? 150 : 100;
+      const basePrice = tierId === 'tier2' ? 200 : 150;
       const tierLabel =
         tierId === 'tier2'
-          ? 'Premium Proxy Package - RM 150'
-          : 'Basic Care Package - RM 100';
+          ? 'Premium Proxy Package - RM 200'
+          : 'Basic Care Package - RM 150';
 
       const addons: { id: string; label: string; price: number }[] = [];
       if (needsWheelchair) {
@@ -393,7 +420,7 @@ async function startServer() {
       }
 
       const addonsTotal = addons.reduce((sum, item) => sum + item.price, 0);
-      const totalPrice = basePrice + addonsTotal;
+      const totalPrice = basePrice + addonsTotal + mileageFee;
 
       let bookingId = `ECE-${Math.floor(1000 + Math.random() * 9000)}`;
       for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -413,18 +440,23 @@ async function startServer() {
           ? addons.map((a) => `${a.label} (+RM ${a.price})`).join(', ')
           : 'None';
 
+      const mileageSummary =
+        pickupZone === 'other'
+          ? `Other Klang Valley (${distanceKm} km, ${extraKm} km x RM 2 = +RM ${mileageFee})`
+          : 'Serdang Free Zone (<= 10 km, RM 0)';
+
       const dateText = body.appointmentDate || 'TBD';
       const timeText = body.pickupTime || 'TBD';
 
-      const whatsappMessage = `[EcoCare Escorts Booking Confirmation] Order ${bookingId} | Name: ${patientName} | Hospital: ${hospitalName} | Schedule: ${dateText} at ${timeText} | Package: ${tierLabel} | Add-ons: ${addonSummary} | Total Price: RM ${totalPrice}. Our Serdang student care team will confirm your companion details via WhatsApp (+60 12-345 6789) within 30 minutes.`;
+      const whatsappMessage = `[EcoCare Escorts Booking Confirmation] Order ${bookingId} | Name: ${patientName} | Hospital: ${hospitalName} | Schedule: ${dateText} at ${timeText} | Package: ${tierLabel} | Add-ons: ${addonSummary} | Mileage: ${mileageSummary} | Total Price: RM ${totalPrice}. Our Serdang student care team will confirm your companion details via WhatsApp (+60 12-345 6789) within 30 minutes.`;
 
       await db.execute({
         sql: `
           INSERT INTO bookings (
             id, patient_name, hospital_name, email, phone,
-            tier_id, tier_label, base_price, addons_json, total_price,
+            tier_id, tier_label, base_price, addons_json, pickup_zone, distance_km, mileage_fee, total_price,
             appointment_date, pickup_time, notes, whatsapp_message, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           bookingId,
@@ -436,6 +468,9 @@ async function startServer() {
           tierLabel,
           basePrice,
           JSON.stringify(addons),
+          pickupZone,
+          distanceKm,
+          mileageFee,
           totalPrice,
           dateText,
           timeText,
@@ -461,6 +496,12 @@ async function startServer() {
         order_id: bookingId,
         bookingId,
         driver_id: assignedDriverId,
+        basePrice,
+        addonsTotal,
+        pickupZone,
+        distanceKm,
+        extraKm,
+        mileageFee,
         totalPrice,
         addons,
         storageTarget: isTursoConfigured ? 'turso' : 'local-libsql',
@@ -478,7 +519,7 @@ async function startServer() {
   app.get('/api/bookings', async (_req: Request, res: Response) => {
     try {
       const result = await db.execute(
-        'SELECT id, patient_name, hospital_name, tier_id, addons_json, total_price, appointment_date, pickup_time, created_at FROM bookings ORDER BY created_at DESC LIMIT 20'
+        'SELECT id, patient_name, hospital_name, tier_id, addons_json, pickup_zone, distance_km, mileage_fee, total_price, appointment_date, pickup_time, created_at FROM bookings ORDER BY created_at DESC LIMIT 20'
       );
       res.json({ bookings: result.rows });
     } catch (error) {

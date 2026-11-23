@@ -45,7 +45,7 @@ export interface FaqItem {
 
 export const HERO_HIGHLIGHTS = [
   {
-    value: 'RM 100',
+    value: 'RM 150',
     label: 'Basic Care Starting Rate',
     context: 'Door-to-door transport, hospital navigation, up to 4 hours',
   },
@@ -182,7 +182,7 @@ export const PRICING_PACKAGES: PricingPackage[] = [
     number: '01.',
     id: 'tier1',
     title: 'Basic Care Package',
-    price: 100,
+    price: 150,
     duration: 'Up to 4 hours',
     subtitle: 'Essential accompaniment & navigation',
     description:
@@ -198,7 +198,7 @@ export const PRICING_PACKAGES: PricingPackage[] = [
     number: '02.',
     id: 'tier2',
     title: 'Premium Proxy Package',
-    price: 150,
+    price: 200,
     duration: 'Up to 4 hours',
     subtitle: 'Full in-room companion & medical summary',
     description:
@@ -289,7 +289,7 @@ export const FAQ_ITEMS: FaqItem[] = [
     id: 'overtime-rate',
     question: 'What happens if the hospital wait exceeds 4 hours?',
     answer:
-      "Our packages include up to 4 hours of service. Any additional time is charged at a flat rate of RM 25 per hour to cover our escorts' time fairly.",
+      "Our packages include up to 4 hours of service. Any additional time is charged at a flat rate of RM 30 per hour to cover our escorts' time fairly.",
   },
   {
     id: 'in-room-proxy',

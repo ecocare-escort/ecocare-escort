@@ -169,7 +169,7 @@ export function HomeView({ onNavigate }: HomeViewProps) {
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
-                      <span>Transparent flat packages starting at RM 100</span>
+                      <span>Transparent flat packages starting at RM 150</span>
                     </li>
                   </ul>
                 </div>
@@ -207,7 +207,7 @@ export function HomeView({ onNavigate }: HomeViewProps) {
                 Ready to arrange your parent’s next hospital visit?
               </h3>
               <p className="mt-1 text-sm text-slate-600">
-                Compare Tier 1 (RM 100) and Tier 2 (RM 150) packages or jump straight into booking.
+                Compare Tier 1 (RM 150) and Tier 2 (RM 200) packages or jump straight into booking.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3 shrink-0">
