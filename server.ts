@@ -1151,6 +1151,108 @@ async function startServer() {
     }
   });
 
+  app.get('/api/staff-orders', async (req: Request, res: Response) => {
+    try {
+      const staffId =
+        typeof req.query?.staff_id === 'string' ? req.query.staff_id.trim() : '';
+
+      if (!staffId || staffId === 'unassigned') {
+        res.status(400).json({ error: 'Missing required staff_id query parameter.' });
+        return;
+      }
+
+      const staffResult = await db.execute({
+        sql: `
+          SELECT
+            id,
+            name,
+            role,
+            phone,
+            photo_url,
+            cpr_certificate_id,
+            login_id,
+            COALESCE(is_driver, 0) AS is_driver,
+            vehicle_model,
+            vehicle_color,
+            vehicle_plate
+          FROM staff
+          WHERE id = ? AND id != 'unassigned'
+          LIMIT 1
+        `,
+        args: [staffId],
+      });
+
+      if (staffResult.rows.length === 0) {
+        res.status(404).json({ error: `Staff member "${staffId}" not found.` });
+        return;
+      }
+
+      const myOrdersResult = await db.execute({
+        sql: `
+          SELECT
+            o.order_id,
+            o.client_name,
+            o.hospital_name,
+            COALESCE(NULLIF(o.pickup_time, ''), '09:00 AM') AS pickup_time,
+            o.staff_id,
+            o.driver_id,
+            o.current_status,
+            o.updated_at,
+            CASE WHEN o.staff_id = 'unassigned' OR c.id IS NULL THEN NULL ELSE c.name END AS companion_name,
+            CASE WHEN o.staff_id = 'unassigned' OR c.id IS NULL THEN NULL ELSE c.phone END AS companion_phone,
+            CASE WHEN o.driver_id IS NULL OR o.driver_id = 'unassigned' OR d.id IS NULL THEN NULL ELSE d.name END AS driver_name,
+            CASE WHEN o.driver_id IS NULL OR o.driver_id = 'unassigned' OR d.id IS NULL THEN NULL ELSE d.phone END AS driver_phone,
+            CASE WHEN o.driver_id IS NULL OR o.driver_id = 'unassigned' OR d.id IS NULL THEN NULL ELSE d.vehicle_model END AS driver_vehicle_model,
+            CASE WHEN o.driver_id IS NULL OR o.driver_id = 'unassigned' OR d.id IS NULL THEN NULL ELSE d.vehicle_color END AS driver_vehicle_color,
+            CASE WHEN o.driver_id IS NULL OR o.driver_id = 'unassigned' OR d.id IS NULL THEN NULL ELSE d.vehicle_plate END AS driver_vehicle_plate
+          FROM orders o
+          LEFT JOIN staff c ON o.staff_id = c.id
+          LEFT JOIN staff d ON o.driver_id = d.id
+          WHERE (o.staff_id = ? OR o.driver_id = ?)
+            AND o.current_status < 6
+            AND (o.completed_at IS NULL OR o.completed_at = '')
+          ORDER BY o.updated_at DESC
+        `,
+        args: [staffId, staffId],
+      });
+
+      const pendingOrdersResult = await db.execute(`
+        SELECT
+          o.order_id,
+          o.client_name,
+          o.hospital_name,
+          COALESCE(NULLIF(o.pickup_time, ''), '09:00 AM') AS pickup_time,
+          o.staff_id,
+          o.driver_id,
+          o.current_status,
+          o.updated_at,
+          CASE WHEN o.driver_id IS NULL OR o.driver_id = 'unassigned' OR d.id IS NULL THEN NULL ELSE d.name END AS driver_name,
+          CASE WHEN o.driver_id IS NULL OR o.driver_id = 'unassigned' OR d.id IS NULL THEN NULL ELSE d.vehicle_model END AS driver_vehicle_model,
+          CASE WHEN o.driver_id IS NULL OR o.driver_id = 'unassigned' OR d.id IS NULL THEN NULL ELSE d.vehicle_plate END AS driver_vehicle_plate
+        FROM orders o
+        LEFT JOIN staff d ON o.driver_id = d.id
+        WHERE o.staff_id = 'unassigned'
+          AND o.current_status < 6
+          AND (o.completed_at IS NULL OR o.completed_at = '')
+        ORDER BY o.updated_at DESC
+      `);
+
+      const staffRow = staffResult.rows[0];
+      res.status(200).json({
+        ok: true,
+        staff: {
+          ...staffRow,
+          is_driver: Number(staffRow.is_driver || 0),
+        },
+        myOrders: myOrdersResult.rows,
+        pendingOrders: pendingOrdersResult.rows,
+      });
+    } catch (error) {
+      console.error('Failed to load staff orders:', error);
+      res.status(500).json({ error: 'Failed to load staff orders from Turso.' });
+    }
+  });
+
   app.get('/api/orders', async (req: Request, res: Response) => {
     try {
       const staffId =
@@ -1159,7 +1261,7 @@ async function startServer() {
       if (staffId) {
         const staffResult = await db.execute({
           sql: `
-            SELECT id, name, role, phone, photo_url, cpr_certificate_id
+            SELECT id, name, role, phone, photo_url, cpr_certificate_id, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate
             FROM staff
             WHERE id = ?
             LIMIT 1
@@ -1180,6 +1282,7 @@ async function startServer() {
               o.hospital_name,
               COALESCE(NULLIF(o.pickup_time, ''), '09:00 AM') AS pickup_time,
               o.staff_id,
+              o.driver_id,
               o.current_status,
               o.updated_at,
               s.name AS staff_name,
@@ -1188,12 +1291,13 @@ async function startServer() {
               s.photo_url AS staff_photo_url,
               s.cpr_certificate_id AS staff_cpr_certificate_id
             FROM orders o
-            INNER JOIN staff s ON o.staff_id = s.id
-            WHERE o.staff_id = ?
+            LEFT JOIN staff s ON o.staff_id = s.id
+            WHERE (o.staff_id = ? OR o.driver_id = ?)
+              AND o.current_status < 6
               AND (o.completed_at IS NULL OR o.completed_at = '')
             ORDER BY o.updated_at DESC
           `,
-          args: [staffId],
+          args: [staffId, staffId],
         });
 
         res.status(200).json({
@@ -1297,7 +1401,12 @@ async function startServer() {
       const rawStatus =
         body.status !== undefined ? body.status : body.current_status;
       const statusNum = Number(rawStatus);
-      const staffId =
+      const action = typeof body.action === 'string' ? body.action.trim().toLowerCase() : '';
+      const actorId =
+        typeof body.actor_id === 'string' && body.actor_id.trim().length > 0
+          ? body.actor_id.trim()
+          : null;
+      const requestedStaffId =
         typeof body.staff_id === 'string' && body.staff_id.trim().length > 0
           ? body.staff_id.trim()
           : null;
@@ -1310,7 +1419,7 @@ async function startServer() {
       }
 
       const existingOrderRes = await db.execute({
-        sql: `SELECT order_id, driver_id FROM orders WHERE UPPER(order_id) = UPPER(?) LIMIT 1`,
+        sql: `SELECT order_id, staff_id, driver_id FROM orders WHERE UPPER(order_id) = UPPER(?) LIMIT 1`,
         args: [orderId],
       });
 
@@ -1319,9 +1428,38 @@ async function startServer() {
         return;
       }
 
+      const existingStaffId = String(existingOrderRes.rows[0].staff_id || 'unassigned').trim();
       const existingDriverId = existingOrderRes.rows[0].driver_id
         ? String(existingOrderRes.rows[0].driver_id).trim()
         : null;
+
+      let nextStaffId = existingStaffId;
+
+      if (action === 'release' || requestedStaffId === 'unassigned') {
+        nextStaffId = 'unassigned';
+      } else if (action === 'claim') {
+        const claimer = requestedStaffId || actorId;
+        if (!claimer || claimer === 'unassigned') {
+          res.status(400).json({ error: 'Valid staff_id is required to claim an order.' });
+          return;
+        }
+        nextStaffId = claimer;
+      } else if (actorId) {
+        const isCompanion = existingStaffId === actorId;
+        const isDriver = Boolean(existingDriverId && existingDriverId === actorId);
+        if (!isCompanion && !isDriver && existingStaffId !== 'unassigned') {
+          res.status(403).json({
+            error: 'You are not assigned as companion or driver for this order.',
+          });
+          return;
+        }
+        nextStaffId = existingStaffId;
+      } else if (requestedStaffId) {
+        const isDriverOnlyCaller =
+          Boolean(existingDriverId && requestedStaffId === existingDriverId) &&
+          existingStaffId !== requestedStaffId;
+        nextStaffId = isDriverOnlyCaller ? existingStaffId : requestedStaffId;
+      }
 
       const assignedDriverId = existingDriverId
         ? existingDriverId
@@ -1329,23 +1467,14 @@ async function startServer() {
 
       const updatedAt = new Date().toISOString();
       const completedAt = statusNum === 6 ? updatedAt : null;
-      const result = staffId
-        ? await db.execute({
-            sql: `
-              UPDATE orders
-              SET current_status = ?, staff_id = ?, driver_id = COALESCE(NULLIF(driver_id, ''), ?), completed_at = ?, updated_at = ?
-              WHERE UPPER(order_id) = UPPER(?)
-            `,
-            args: [statusNum, staffId, assignedDriverId, completedAt, updatedAt, orderId],
-          })
-        : await db.execute({
-            sql: `
-              UPDATE orders
-              SET current_status = ?, driver_id = COALESCE(NULLIF(driver_id, ''), ?), completed_at = ?, updated_at = ?
-              WHERE UPPER(order_id) = UPPER(?)
-            `,
-            args: [statusNum, assignedDriverId, completedAt, updatedAt, orderId],
-          });
+      const result = await db.execute({
+        sql: `
+          UPDATE orders
+          SET current_status = ?, staff_id = ?, driver_id = COALESCE(NULLIF(driver_id, ''), ?), completed_at = ?, updated_at = ?
+          WHERE UPPER(order_id) = UPPER(?)
+        `,
+        args: [statusNum, nextStaffId, assignedDriverId, completedAt, updatedAt, orderId],
+      });
 
       if (result.rowsAffected === 0) {
         res.status(404).json({ error: `Order ${orderId} not found.` });
@@ -1357,7 +1486,7 @@ async function startServer() {
         order_id: orderId,
         current_status: statusNum,
         status: statusNum,
-        staff_id: staffId,
+        staff_id: nextStaffId,
         driver_id: assignedDriverId,
         updated_at: updatedAt,
         completed_at: completedAt,

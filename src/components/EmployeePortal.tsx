@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  Car,
   Check,
   CheckCircle2,
   Eye,
@@ -39,8 +40,16 @@ interface OrderRecord {
   hospital_name: string | null;
   pickup_time: string | null;
   staff_id: string;
+  driver_id?: string | null;
   current_status: number;
   updated_at: string;
+  companion_name?: string | null;
+  companion_phone?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  driver_vehicle_model?: string | null;
+  driver_vehicle_color?: string | null;
+  driver_vehicle_plate?: string | null;
 }
 
 const STATUS_BUTTONS = [
@@ -74,9 +83,11 @@ export function EmployeePortal({
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [loggedInStaff, setLoggedInStaff] = useState<StaffProfile | null>(null);
+  const [myOrders, setMyOrders] = useState<OrderRecord[]>([]);
   const [pendingOrders, setPendingOrders] = useState<OrderRecord[]>([]);
   const [selectedPendingId, setSelectedPendingId] = useState<string>('');
   const [activeOrder, setActiveOrder] = useState<OrderRecord | null>(null);
+  const [showDriverDispatchPool, setShowDriverDispatchPool] = useState<boolean>(false);
 
   const [loadingDashboard, setLoadingDashboard] = useState<boolean>(false);
   const [claimingOrder, setClaimingOrder] = useState<boolean>(false);
@@ -110,38 +121,47 @@ export function EmployeePortal({
     };
   }, []);
 
-  const loadDashboardData = async (staff: StaffProfile) => {
+  const loadDashboardData = async (
+    staff: StaffProfile,
+    preferredOrderId?: string | null
+  ) => {
     setLoadingDashboard(true);
     setPhotoFailed(false);
     try {
-      const [staffOrdersRes, pendingRes] = await Promise.all([
-        fetch(`/api/orders?staff_id=${encodeURIComponent(staff.id)}`),
-        fetch('/api/pending-orders'),
-      ]);
+      const response = await fetch(
+        `/api/staff-orders?staff_id=${encodeURIComponent(staff.id)}`
+      );
 
-      if (staffOrdersRes.status === 404) {
+      if (response.status === 404) {
         setLoggedInStaff(null);
+        setMyOrders([]);
         setActiveOrder(null);
         setAuthError('Your staff profile is no longer active. Please sign in again.');
         return;
       }
 
-      if (staffOrdersRes.ok) {
-        const staffData = await staffOrdersRes.json();
-        if (staffData.staff) {
+      if (response.ok) {
+        const data = await response.json();
+        if (data.staff) {
           setLoggedInStaff({
             ...staff,
-            ...staffData.staff,
-            phone: staffData.staff.phone || staff.phone,
-            photo_url: staffData.staff.photo_url || staff.photo_url,
+            ...data.staff,
+            phone: data.staff.phone || staff.phone,
+            photo_url: data.staff.photo_url || staff.photo_url,
           });
         }
-        setActiveOrder((staffData.activeOrder as OrderRecord | null) ?? null);
-      }
 
-      if (pendingRes.ok) {
-        const pendingData = await pendingRes.json();
-        const dbPending = (pendingData.pendingOrders || []) as OrderRecord[];
+        const assignedList = (data.myOrders || []) as OrderRecord[];
+        setMyOrders(assignedList);
+        setActiveOrder((prev) => {
+          const targetId = preferredOrderId ?? prev?.order_id;
+          const matched = targetId
+            ? assignedList.find((o) => o.order_id === targetId)
+            : null;
+          return matched || assignedList[0] || null;
+        });
+
+        const dbPending = (data.pendingOrders || []) as OrderRecord[];
         setPendingOrders(dbPending);
         setSelectedPendingId((prev) =>
           dbPending.some((o) => o.order_id === prev)
@@ -206,7 +226,10 @@ export function EmployeePortal({
 
   const handleLogout = () => {
     setLoggedInStaff(null);
+    setMyOrders([]);
+    setPendingOrders([]);
     setActiveOrder(null);
+    setShowDriverDispatchPool(false);
     setLoginIdInput('');
     setPassword('');
     setShowPasscode(false);
@@ -335,8 +358,9 @@ export function EmployeePortal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_id: chosenOrder.order_id,
-          status: 1,
+          status: chosenOrder.current_status || 1,
           staff_id: loggedInStaff.id,
+          action: 'claim',
         }),
       });
       const data = await response.json();
@@ -344,22 +368,8 @@ export function EmployeePortal({
         throw new Error(data.error || 'Failed to claim order in database.');
       }
 
-      const claimedRecord: OrderRecord = {
-        ...chosenOrder,
-        staff_id: loggedInStaff.id,
-        current_status: Number(data.current_status ?? 1),
-        updated_at: data.updated_at || new Date().toISOString(),
-      };
-
-      setActiveOrder(claimedRecord);
-      setPendingOrders((prev) => {
-        const remaining = prev.filter(
-          (o) => o.order_id !== chosenOrder.order_id
-        );
-        setSelectedPendingId(remaining[0]?.order_id ?? '');
-        return remaining;
-      });
-      setFeedback(`Order ${claimedRecord.order_id} claimed. Status updates unlocked.`);
+      await loadDashboardData(loggedInStaff, chosenOrder.order_id);
+      setFeedback(`Order ${chosenOrder.order_id} claimed. Status updates unlocked.`);
     } catch (err) {
       setApiError(
         err instanceof Error ? err.message : 'Unable to claim order from Turso.'
@@ -370,7 +380,7 @@ export function EmployeePortal({
   };
 
   const handleReleaseOrder = async () => {
-    if (!activeOrder || releasingOrder) return;
+    if (!activeOrder || !loggedInStaff || releasingOrder) return;
     const orderToRelease = activeOrder;
 
     setReleasingOrder(true);
@@ -385,6 +395,7 @@ export function EmployeePortal({
           order_id: orderToRelease.order_id,
           status: 1,
           staff_id: 'unassigned',
+          action: 'release',
         }),
       });
       const data = await response.json();
@@ -392,19 +403,7 @@ export function EmployeePortal({
         throw new Error(data.error || 'Failed to release order.');
       }
 
-      const releasedRecord: OrderRecord = {
-        ...orderToRelease,
-        staff_id: 'unassigned',
-        current_status: 1,
-        updated_at: data.updated_at || new Date().toISOString(),
-      };
-      setActiveOrder(null);
-      setPendingOrders((prev) => {
-        const exists = prev.some((o) => o.order_id === releasedRecord.order_id);
-        const updated = exists ? prev : [releasedRecord, ...prev];
-        setSelectedPendingId(releasedRecord.order_id);
-        return updated;
-      });
+      await loadDashboardData(loggedInStaff);
       setFeedback(`Released ${orderToRelease.order_id} back to pending orders.`);
     } catch (err) {
       setApiError(
@@ -433,7 +432,7 @@ export function EmployeePortal({
         body: JSON.stringify({
           order_id: activeOrder.order_id,
           status,
-          staff_id: loggedInStaff.id,
+          actor_id: loggedInStaff.id,
         }),
       });
       const data = await response.json();
@@ -442,15 +441,18 @@ export function EmployeePortal({
       }
 
       const savedAt = data.updated_at || new Date().toISOString();
-      setActiveOrder((prev) =>
-        prev
-          ? {
-              ...prev,
-              current_status: Number(data.current_status ?? status),
-              staff_id: loggedInStaff.id,
-              updated_at: savedAt,
-            }
-          : null
+      const updatedFields = {
+        current_status: Number(data.current_status ?? status),
+        staff_id: data.staff_id || activeOrder.staff_id,
+        driver_id: data.driver_id !== undefined ? data.driver_id : activeOrder.driver_id,
+        updated_at: savedAt,
+      };
+
+      setActiveOrder((prev) => (prev ? { ...prev, ...updatedFields } : null));
+      setMyOrders((prev) =>
+        prev.map((o) =>
+          o.order_id === activeOrder.order_id ? { ...o, ...updatedFields } : o
+        )
       );
 
       const timeFormatted = new Date(savedAt).toLocaleTimeString([], {
@@ -484,7 +486,7 @@ export function EmployeePortal({
         body: JSON.stringify({
           order_id: completedOrder.order_id,
           status: 6,
-          staff_id: loggedInStaff.id,
+          actor_id: loggedInStaff.id,
         }),
       });
       const data = await response.json();
@@ -492,7 +494,6 @@ export function EmployeePortal({
         throw new Error(data.error || 'Failed to complete order in Turso.');
       }
 
-      setActiveOrder(null);
       setCompletionToast(
         `Order ${completedOrder.order_id} completed successfully!`
       );
@@ -503,6 +504,8 @@ export function EmployeePortal({
       toastTimerRef.current = window.setTimeout(() => {
         setCompletionToast(null);
       }, 4500);
+
+      await loadDashboardData(loggedInStaff);
     } catch (err) {
       setApiError(
         err instanceof Error ? err.message : 'Unable to complete order in Turso.'
@@ -518,6 +521,13 @@ export function EmployeePortal({
         minute: '2-digit',
       })
     : '--:--';
+
+  const isStrictlyDriver =
+    Boolean(loggedInStaff) &&
+    /driver/i.test(loggedInStaff?.role || '') &&
+    !/companion|escort/i.test(loggedInStaff?.role || '');
+
+  const hideDispatchByDefault = isStrictlyDriver && myOrders.length > 0;
 
   return (
     <section
@@ -889,26 +899,225 @@ export function EmployeePortal({
               </div>
             )}
 
-            {/* 2. Order Claiming Workflow (State A vs State B) */}
-            {!activeOrder ? (
-              /* State A: No active task — Select & Claim a Paid Pending Order */
+            {/* 2. My Active Trips (Auto-Assigned as Driver or Claimed as Companion) */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xs font-semibold text-slate-700">
+                    My Active Trips (Auto-Assigned)
+                  </h2>
+                  <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-slate-700">
+                    {myOrders.length}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  aria-label="Refresh assigned trips"
+                  onClick={() => loadDashboardData(loggedInStaff, activeOrder?.order_id)}
+                  disabled={loadingDashboard}
+                  className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${loadingDashboard ? 'animate-spin' : ''}`}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+
+              {myOrders.length === 0 ? (
+                <p className="mt-2.5 rounded-lg border border-dashed border-slate-200 bg-slate-50/70 px-3.5 py-4 text-center text-xs leading-relaxed text-slate-500">
+                  No active trips assigned yet. Claim an order from the Dispatch Pool below or wait for auto-dispatch.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2.5">
+                  {myOrders.map((order) => {
+                    const isSelected = activeOrder?.order_id === order.order_id;
+                    const assignedAsDriver = order.driver_id === loggedInStaff.id;
+                    const assignedAsCompanion = order.staff_id === loggedInStaff.id;
+                    const stepMeta = STATUS_BUTTONS.find(
+                      (b) => b.status === Number(order.current_status)
+                    );
+                    const stepLabel = stepMeta
+                      ? `Step ${stepMeta.status} · ${stepMeta.label}`
+                      : `Step ${order.current_status}`;
+
+                    return (
+                      <button
+                        key={order.order_id}
+                        type="button"
+                        onClick={() => {
+                          setActiveOrder(order);
+                          setFeedback(null);
+                          setApiError(null);
+                        }}
+                        className={`w-full rounded-lg border p-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                          isSelected
+                            ? 'border-emerald-700 bg-emerald-50/60'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-mono text-xs font-semibold tabular-nums text-emerald-800">
+                            {order.order_id}
+                          </span>
+                          <span className="rounded border border-slate-200 bg-white px-2 py-0.5 font-mono text-[11px] font-medium tabular-nums text-slate-700">
+                            {stepLabel}
+                          </span>
+                        </div>
+
+                        <p className="mt-1.5 font-display text-sm font-semibold text-slate-900">
+                          {order.client_name}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-600">
+                          {order.hospital_name || 'Klang Valley Hospital'}
+                          {order.pickup_time ? ` · ${order.pickup_time}` : ''}
+                        </p>
+
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                          {assignedAsDriver && (
+                            <span className="inline-flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+                              <Car className="h-3 w-3" aria-hidden="true" />
+                              <span>Assigned as Driver</span>
+                            </span>
+                          )}
+                          {assignedAsCompanion && (
+                            <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                              <User className="h-3 w-3" aria-hidden="true" />
+                              <span>Assigned as Companion</span>
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Selected Active Task Quick Actions */}
+            {activeOrder && (
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xs font-semibold text-slate-500">
+                      Selected Trip
+                    </h2>
+                    <span aria-hidden="true" className="text-slate-300">
+                      ·
+                    </span>
+                    <span className="font-mono text-xs tabular-nums text-slate-600">
+                      {activeOrder.order_id}
+                    </span>
+                  </div>
+
+                  {activeOrder.staff_id === loggedInStaff.id && (
+                    <button
+                      type="button"
+                      onClick={handleReleaseOrder}
+                      disabled={releasingOrder || updatingStatus !== null}
+                      className="min-h-[36px] rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                    >
+                      {releasingOrder ? 'Releasing...' : 'Release Order'}
+                    </button>
+                  )}
+                </div>
+
+                <p className="mt-2 font-display text-base font-semibold leading-snug text-slate-900">
+                  {activeOrder.client_name} -{' '}
+                  {activeOrder.hospital_name || 'Klang Valley Hospital'}
+                  {activeOrder.pickup_time ? (
+                    <>
+                      <span aria-hidden="true" className="mx-1.5 text-slate-300">
+                        ·
+                      </span>
+                      <span className="font-mono tabular-nums text-slate-700">
+                        {activeOrder.pickup_time}
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+
+                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                  <p>
+                    Companion:{' '}
+                    <span className="font-medium text-slate-800">
+                      {activeOrder.companion_name || 'Awaiting companion claim'}
+                    </span>
+                  </p>
+                  {activeOrder.driver_name && (
+                    <p>
+                      Driver:{' '}
+                      <span className="font-medium text-slate-800">
+                        {activeOrder.driver_name}
+                        {activeOrder.driver_vehicle_plate
+                          ? ` (${activeOrder.driver_vehicle_plate})`
+                          : ''}
+                      </span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                  <span className="font-mono tabular-nums">
+                    Updated {formattedUpdatedTime}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenClientTracker(activeOrder.order_id)}
+                    className="inline-flex items-center gap-1 font-medium text-emerald-700 hover:underline whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                  >
+                    <span>View Live Tracker</span>
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Dispatch Pool (Available Pending Orders) */}
+            {hideDispatchByDefault && !showDriverDispatchPool ? (
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <span className="text-xs text-slate-600">
+                  Dispatch Pool ({pendingOrders.length} unassigned companion{' '}
+                  {pendingOrders.length === 1 ? 'order' : 'orders'})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowDriverDispatchPool(true)}
+                  className="text-xs font-semibold text-emerald-700 hover:underline whitespace-nowrap"
+                >
+                  Show Pool
+                </button>
+              </div>
+            ) : (
               <div className="rounded-xl border border-slate-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-xs font-semibold text-slate-500">
                     Dispatch Pool
                   </h2>
-                  <button
-                    type="button"
-                    aria-label="Refresh pending orders"
-                    onClick={() => loadDashboardData(loggedInStaff)}
-                    disabled={loadingDashboard}
-                    className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
-                  >
-                    <RefreshCw
-                      className={`h-3.5 w-3.5 ${loadingDashboard ? 'animate-spin' : ''}`}
-                      aria-hidden="true"
-                    />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {hideDispatchByDefault && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDriverDispatchPool(false)}
+                        className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                      >
+                        Hide
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-label="Refresh pending orders"
+                      onClick={() => loadDashboardData(loggedInStaff, activeOrder?.order_id)}
+                      disabled={loadingDashboard}
+                      className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${loadingDashboard ? 'animate-spin' : ''}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-2.5">
@@ -946,68 +1155,14 @@ export function EmployeePortal({
                   {claimingOrder ? 'Claiming Order...' : 'Claim Order'}
                 </button>
               </div>
-            ) : (
-              /* State B: Task Claimed — Locked Active Task Card */
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xs font-semibold text-slate-500">
-                      Active Task
-                    </h2>
-                    <span aria-hidden="true" className="text-slate-300">
-                      ·
-                    </span>
-                    <span className="font-mono text-xs tabular-nums text-slate-600">
-                      {activeOrder.order_id}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleReleaseOrder}
-                    disabled={releasingOrder || updatingStatus !== null}
-                    className="min-h-[36px] rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
-                  >
-                    {releasingOrder ? 'Releasing...' : 'Release Order'}
-                  </button>
-                </div>
-
-                <p className="mt-2 font-display text-base font-semibold leading-snug text-slate-900">
-                  {activeOrder.client_name} -{' '}
-                  {activeOrder.hospital_name || 'Klang Valley Hospital'}
-                  {activeOrder.pickup_time ? (
-                    <>
-                      <span aria-hidden="true" className="mx-1.5 text-slate-300">
-                        ·
-                      </span>
-                      <span className="font-mono tabular-nums text-slate-700">
-                        {activeOrder.pickup_time}
-                      </span>
-                    </>
-                  ) : null}
-                </p>
-
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
-                  <span className="font-mono tabular-nums">
-                    Updated {formattedUpdatedTime}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onOpenClientTracker(activeOrder.order_id)}
-                    className="inline-flex items-center gap-1 font-medium text-emerald-700 hover:underline whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
-                  >
-                    <span>View Live Tracker</span>
-                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
             )}
 
-            {/* 3. Status Update Buttons (Active ONLY in State B) */}
+            {/* 4. Status Update Buttons (Active whenever a trip is selected) */}
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-xs font-semibold text-slate-500">
                   Update Trip Status
+                  {activeOrder ? ` · ${activeOrder.order_id}` : ''}
                 </h2>
                 {!activeOrder && (
                   <span className="text-xs text-slate-400">Locked</span>
@@ -1016,7 +1171,7 @@ export function EmployeePortal({
 
               {!activeOrder && (
                 <p className="mt-1.5 text-xs text-slate-500">
-                  Claim a pending order above to unlock the 5 status buttons.
+                  Select an assigned trip or claim a pending order above to unlock status updates.
                 </p>
               )}
 
