@@ -137,6 +137,15 @@ export function Footer({ onNavigate }: FooterProps) {
               <li>
                 <button
                   type="button"
+                  onClick={() => onNavigate('about')}
+                  className="transition-colors hover:text-white hover:underline hover:underline-offset-4"
+                >
+                  About Us
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
                   onClick={() => onNavigate('services')}
                   className="transition-colors hover:text-white hover:underline hover:underline-offset-4"
                 >

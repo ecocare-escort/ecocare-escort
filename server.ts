@@ -586,7 +586,7 @@ async function startServer() {
 
       const columns = adminVerified
         ? 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, passcode, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate'
-        : 'id, name, role, phone, photo_url, cpr_certificate_id, login_id, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate';
+        : 'id, name, role, photo_url, cpr_certificate_id, COALESCE(is_driver, 0) AS is_driver, vehicle_model, vehicle_color, vehicle_plate';
 
       const result = await db.execute(`
         SELECT ${columns}

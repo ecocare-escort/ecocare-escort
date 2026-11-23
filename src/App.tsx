@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { HomeView, type AppView } from './components/HomeView';
+import { AboutUsPage } from './components/AboutUsPage';
 import { ServicesView } from './components/ServicesView';
 import { FAQView } from './components/FAQView';
 import { EmployeePortal } from './components/EmployeePortal';
@@ -43,6 +44,7 @@ function parseRoute(): RouteState {
     const id = decodeURIComponent(window.location.hash.slice('#track/'.length)).trim();
     return { view: 'tracker', orderId: id || queryOrderId || undefined };
   }
+  if (path === '/about' || hash === 'about') return { view: 'about' };
   if (path === '/services' || hash === 'services') return { view: 'services' };
   if (path === '/book' || hash === 'book') return { view: 'book' };
   if (path === '/faq' || hash === 'faq') return { view: 'faq' };
@@ -145,6 +147,19 @@ export default function App() {
 
             <button
               type="button"
+              onClick={() => navigateTo('about')}
+              aria-current={activeView === 'about' ? 'page' : undefined}
+              className={`transition-colors whitespace-nowrap shrink-0 hover:underline hover:underline-offset-4 ${
+                activeView === 'about'
+                  ? 'font-semibold text-emerald-700 underline underline-offset-4'
+                  : 'hover:text-slate-900'
+              }`}
+            >
+              About Us
+            </button>
+
+            <button
+              type="button"
               onClick={() => navigateTo('services')}
               aria-current={activeView === 'services' ? 'page' : undefined}
               className={`transition-colors whitespace-nowrap shrink-0 hover:underline hover:underline-offset-4 ${
@@ -225,6 +240,17 @@ export default function App() {
               </button>
               <button
                 type="button"
+                onClick={() => navigateTo('about')}
+                className={`rounded-lg px-3 py-2.5 text-left transition-colors ${
+                  activeView === 'about'
+                    ? 'bg-emerald-50 font-semibold text-emerald-800'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                About Us
+              </button>
+              <button
+                type="button"
                 onClick={() => navigateTo('services')}
                 className={`rounded-lg px-3 py-2.5 text-left transition-colors ${
                   activeView === 'services'
@@ -271,6 +297,8 @@ export default function App() {
       {/* Active View Content */}
       <main id="top" className="flex-1">
         {activeView === 'home' && <HomeView onNavigate={(v) => navigateTo(v)} />}
+
+        {activeView === 'about' && <AboutUsPage onNavigate={(v) => navigateTo(v)} />}
 
         {activeView === 'services' && (
           <ServicesView
