@@ -119,12 +119,11 @@ export function AboutUsPage({ onNavigate }: AboutUsPageProps) {
               </p>
 
               <p className="mt-5 max-w-2xl text-base leading-relaxed text-slate-600">
-                EcoCare Escorts is a Serdang-based, student-run social enterprise dedicated to
-                compassionate door-to-door hospital accompaniment across the Greater Klang Valley.
-                We bridge the gap for busy working families by pairing seniors and patients with
-                CPR and First-Aid certified companions and designated drivers who stay beside them
-                from doorstep pickup through registration, doctor consultation, pharmacy collection,
-                and safe return home.
+                Co-created by a 6-member founding team in Serdang, EcoCare Escorts was built to
+                solve the real-world struggle of working families in the Greater Klang Valley caring
+                for aging parents. We combine reliable, door-to-door hospital accompaniment by CPR
+                and First-Aid certified companions with a social cross-subsidy model aligned with
+                UN SDG 3 and UN SDG 10—where every 10 paid trips funds 1 free B40 senior escort.
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -283,48 +282,46 @@ export function AboutUsPage({ onNavigate }: AboutUsPageProps) {
         </div>
       </section>
 
-      {/* 3. Visual Organisational Chart */}
+      {/* 3. Visual Organisational Chart (6-Member Team) */}
       <section className="border-b border-slate-200 bg-white py-14 md:py-20">
         <div className="mx-auto max-w-6xl px-6">
           <div className="max-w-2xl">
             <p className="text-xs font-medium tracking-wide text-emerald-700">
-              Governance &amp; Structure
+              6-Member Founding Team &amp; Structure
             </p>
             <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-900 text-balance">
               Organisational Chart
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-600 md:text-base">
-              A focused leadership structure connecting social-enterprise strategy, B40 impact
-              accounting, community outreach, and frontline dispatch across our companion and
-              driver teams.
+              A 4-tier leadership and dispatch structure uniting executive strategy, technology,
+              fleet operations, social-impact finance, and frontline hospital care.
             </p>
           </div>
 
           <div className="mt-10">
-            {/* Level 1: Founder / Managing Director */}
+            {/* Level 1 (Top): Founder & CEO */}
             <div className="flex justify-center">
               <div className="w-full max-w-sm rounded-xl border border-emerald-700 bg-emerald-50/40 p-5 text-center">
                 <p className="text-xs font-semibold text-emerald-800">
-                  Founder / Managing Director
+                  Founder &amp; CEO
                 </p>
                 <h3 className="mt-1 font-display text-lg font-bold text-slate-900">
-                  Dong Hao
+                  Jia Yi
                 </h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                  Overall Strategy, Operations &amp; Quality Assurance
+                  Vision, Strategy &amp; Partnerships
                 </p>
               </div>
             </div>
 
             {/* Tree Connector: Level 1 -> Level 2 */}
             <div className="mx-auto h-6 w-px bg-slate-300" aria-hidden="true" />
-            <div className="relative hidden md:block" aria-hidden="true">
-              {/* Horizontal rail spanning from center of col 1 (~16.67%) to center of col 3 (~83.33%) */}
-              <div className="mx-auto h-px bg-slate-300" style={{ width: 'calc(66.6667% - 1rem)' }} />
-              <div className="grid grid-cols-3 gap-6">
-                <div className="flex justify-center">
-                  <div className="h-6 w-px bg-slate-300" />
-                </div>
+            <div className="hidden md:block" aria-hidden="true">
+              <div
+                className="mx-auto h-px bg-slate-300"
+                style={{ width: 'calc(50% + 0.75rem)' }}
+              />
+              <div className="grid grid-cols-2 gap-6">
                 <div className="flex justify-center">
                   <div className="h-6 w-px bg-slate-300" />
                 </div>
@@ -334,14 +331,74 @@ export function AboutUsPage({ onNavigate }: AboutUsPageProps) {
               </div>
             </div>
 
-            {/* Level 2: 3 Department Heads */}
+            {/* Level 2 (Co-Founders — 2 branches under Level 1) */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+              <div className="rounded-xl border border-slate-200 bg-white p-5 text-center md:text-left">
+                <p className="text-xs font-semibold text-emerald-700">
+                  Co-Founder &amp; CTO
+                </p>
+                <h3 className="mt-1 font-display text-base font-bold text-slate-900">
+                  Dong Hao
+                </h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
+                  Platform Tech, Live Tracker &amp; Quality Assurance
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-5 text-center md:text-left">
+                <p className="text-xs font-semibold text-emerald-700">
+                  Co-Founder &amp; Head of Fleet &amp; Operations
+                </p>
+                <h3 className="mt-1 font-display text-base font-bold text-slate-900">
+                  Jia Liang
+                </h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
+                  Dispatch Logistics, Fleet &amp; Safety
+                </p>
+              </div>
+            </div>
+
+            {/* Tree Connector: Level 2 -> Level 3 */}
+            <div className="mx-auto h-6 w-px bg-slate-300 md:hidden" aria-hidden="true" />
+            <div className="hidden md:block" aria-hidden="true">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="flex justify-center">
+                  <div className="h-5 w-px bg-slate-300" />
+                </div>
+                <div className="flex justify-center">
+                  <div className="h-5 w-px bg-slate-300" />
+                </div>
+              </div>
+              <div
+                className="mx-auto h-px bg-slate-300"
+                style={{ width: 'calc(50% + 0.75rem)' }}
+              />
+              <div className="mx-auto h-5 w-px bg-slate-300" />
+              <div
+                className="mx-auto h-px bg-slate-300"
+                style={{ width: 'calc(66.6667% + 1rem)' }}
+              />
+              <div className="grid grid-cols-3 gap-6">
+                <div className="flex justify-center">
+                  <div className="h-5 w-px bg-slate-300" />
+                </div>
+                <div className="flex justify-center">
+                  <div className="h-5 w-px bg-slate-300" />
+                </div>
+                <div className="flex justify-center">
+                  <div className="h-5 w-px bg-slate-300" />
+                </div>
+              </div>
+            </div>
+
+            {/* Level 3 (Departments — 3 branches under Level 2) */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
               <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-xs font-semibold text-emerald-700">
-                  Finance &amp; Impact Director
+                  Head of Finance &amp; Impact
                 </p>
                 <h3 className="mt-1 font-display text-base font-bold text-slate-900">
-                  Junxian
+                  Jun Xian
                 </h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
                   Financial Modeling, Pricing &amp; B40 Subsidy Fund
@@ -350,81 +407,70 @@ export function AboutUsPage({ onNavigate }: AboutUsPageProps) {
 
               <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-xs font-semibold text-emerald-700">
-                  Marketing &amp; Community Lead
+                  Marketing &amp; Brand Lead
                 </p>
                 <h3 className="mt-1 font-display text-base font-bold text-slate-900">
-                  Konghong
+                  Kam Weng
                 </h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                  4Ps Strategy, Partnerships &amp; Client Outreach
+                  Brand Identity &amp; Digital Campaigns
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-5">
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-xs font-semibold text-emerald-700">
-                  Operations &amp; Fleet Coordinator
+                  Marketing &amp; Outreach Lead
                 </p>
                 <h3 className="mt-1 font-display text-base font-bold text-slate-900">
-                  Care &amp; Dispatch Operations
+                  Kong Hong
                 </h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                  Companion Scheduling &amp; Auto-Dispatch
+                  4Ps Strategy &amp; Community Partnerships
                 </p>
               </div>
             </div>
 
-            {/* Tree Connector: Operations & Fleet Coordinator -> Level 3 Frontline Teams */}
-            <div className="grid grid-cols-1 md:grid-cols-3 md:gap-6" aria-hidden="true">
-              {/* Mobile vertical drop */}
-              <div className="mx-auto h-6 w-px bg-slate-300 md:hidden" />
-
-              {/* Desktop branch dropping specifically from Col 3 (Operations & Fleet Coordinator) */}
-              <div className="hidden md:col-start-2 md:col-span-2 md:block">
-                <div className="grid grid-cols-2 gap-6">
-                  <div />
-                  <div className="flex justify-center">
-                    <div className="h-6 w-px bg-slate-300" />
-                  </div>
+            {/* Tree Connector: Level 3 -> Level 4 Frontline Operations Bar */}
+            <div className="mx-auto h-6 w-px bg-slate-300 md:hidden" aria-hidden="true" />
+            <div className="hidden md:block" aria-hidden="true">
+              <div className="grid grid-cols-3 gap-6">
+                <div className="flex justify-center">
+                  <div className="h-5 w-px bg-slate-300" />
                 </div>
-                <div className="mx-auto h-px bg-slate-300" style={{ width: 'calc(50% + 0.75rem)' }} />
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex justify-center">
-                    <div className="h-6 w-px bg-slate-300" />
-                  </div>
-                  <div className="flex justify-center">
-                    <div className="h-6 w-px bg-slate-300" />
-                  </div>
+                <div className="flex justify-center">
+                  <div className="h-5 w-px bg-slate-300" />
+                </div>
+                <div className="flex justify-center">
+                  <div className="h-5 w-px bg-slate-300" />
                 </div>
               </div>
+              <div
+                className="mx-auto h-px bg-slate-300"
+                style={{ width: 'calc(66.6667% + 1rem)' }}
+              />
+              <div className="mx-auto h-6 w-px bg-slate-300" />
             </div>
 
-            {/* Level 3: Frontline Teams under Operations */}
-            <div className="grid grid-cols-1 md:grid-cols-3 md:gap-6">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:col-start-2 md:col-span-2 md:gap-6">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
-                    <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                    <span>Frontline Care Team</span>
-                  </div>
-                  <h3 className="mt-1.5 font-display text-base font-bold text-slate-900">
-                    Certified Care Companions
-                  </h3>
-                  <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                    CPR / First-Aid Certified Hospital Escorts
+            {/* Level 4 (Frontline Operations Bar at bottom) */}
+            <div className="rounded-xl border border-emerald-200 bg-slate-50 p-5 md:p-6">
+              <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+                <div>
+                  <p className="text-xs font-semibold text-emerald-800">
+                    Frontline Care Team
                   </p>
+                  <h3 className="mt-1 font-display text-base font-bold text-slate-900">
+                    Certified Care Companions (CPR/First-Aid) &amp; 3-Vehicle Auto-Dispatch Fleet
+                  </h3>
                 </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
-                    <CarFront className="h-4 w-4" aria-hidden="true" />
-                    <span>Frontline Mobility Pool</span>
-                  </div>
-                  <h3 className="mt-1.5 font-display text-base font-bold text-slate-900">
-                    Designated Fleet Drivers
-                  </h3>
-                  <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                    3-Vehicle Auto-Dispatch Pool: Alza, Bezza, Persona
-                  </p>
+                <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-600">
+                  <span className="inline-flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+                    <span>St. John Ambulance Certified Escorts</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <CarFront className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+                    <span>3-Vehicle Auto-Dispatch Pool</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -432,7 +478,7 @@ export function AboutUsPage({ onNavigate }: AboutUsPageProps) {
         </div>
       </section>
 
-      {/* 4. Live Team & Roles Directory from Turso */}
+      {/* 4. Active Care Team Directory (Live from Turso) */}
       <section className="py-14 md:py-20">
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -441,7 +487,7 @@ export function AboutUsPage({ onNavigate }: AboutUsPageProps) {
                 Active Companions &amp; Drivers
               </p>
               <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-900 text-balance">
-                Meet Our Team
+                Meet Our Care Companions &amp; Drivers
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-slate-600 md:text-base">
                 Verified EcoCare Escorts companions and designated drivers currently active on our
