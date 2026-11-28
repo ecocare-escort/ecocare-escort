@@ -46,7 +46,9 @@ function parseRoute(): RouteState {
   }
   if (path === '/about' || hash === 'about') return { view: 'about' };
   if (path === '/services' || hash === 'services') return { view: 'services' };
-  if (path === '/book' || hash === 'book') return { view: 'book' };
+  if (path === '/book' || path === '/book-now' || hash === 'book' || hash === 'book-now') {
+    return { view: 'book' };
+  }
   if (path === '/faq' || hash === 'faq') return { view: 'faq' };
   if (
     path === '/track' ||
